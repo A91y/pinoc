@@ -1,0 +1,15 @@
+[package]
+name = "chio"
+version = "0.1.0"
+edition = "2021"
+authors = ["Arjun <arjunmundamani@gmail.com>"]
+description = "A CLI tool for setting up pinocchio program project"
+repository = "https://github.com/AthenFoss/bruno"
+license = "MIT"
+readme = "README.md"
+keywords = ["cli", "scaffold", "template", "project", "generator", "solana", "pinocchio"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+anyhow = "1.0"
