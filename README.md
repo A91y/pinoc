@@ -6,7 +6,7 @@
 
 ## About
 
-Chio is a command-line tool designed to make it easy to set up and manage [Pinocchio](https://github.com/solana-labs/pinocchio) projects on Solana. It automates common development tasks including project initialization, building, testing, and deployment with simple commands.
+Chio is a command-line tool designed to make it easy to set up and manage [Pinocchio](https://github.com/anza-xyz/pinocchio) projects on Solana. It automates common development tasks including project initialization, building, testing, and deployment with simple commands.
 
 ## Features
 
