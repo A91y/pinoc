@@ -18,8 +18,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Init { project_name: String },
+    Init {
+        project_name: String,
+    },
     Build,
+    #[command(name = "--help")]
+    Help,
 }
 
 fn main() -> Result<()> {
@@ -43,32 +47,60 @@ fn main() -> Result<()> {
                 println!("Build completed successfully!");
             }
         }
+        Commands::Help => {
+            display_help_banner()?;
+        }
     }
 
     Ok(())
 }
 
-fn init_project(project_name: &str) -> Result<()> {
-    println!("\x1b[38;2;255;160;122m"); // Custom RGB color for coral/orange
+fn display_help_banner() -> Result<()> {
+    // Display the banner
+    println!("\x1b[38;2;255;175;193m");
     println!(
         r#"
-▄▄▄▄· ▄▄▄  ▄• ▄▌ ▐ ▄       
-▐█ ▀█▪▀▄ █·█▪██▌•█▌▐█▪     
-▐█▀▀█▄▐▀▀▄ █▌▐█▌▐█▐▐▌ ▄█▀▄ 
-██▄▪▐█▐█•█▌▐█▄█▌██▐█▌▐█▌.▐▌
-·▀▀▀▀ .▀  ▀ ▀▀▀ ▀▀ █▪ ▀█▄▀▪
-"#
+      *     *       
+  ___| |__ (_) ___  
+ / __| '_ \| |/ _ \ 
+| (__| | | | | (_) |
+ \___|_| |_|_|\___/ 
+ "#
+    );
+
+    println!("\x1b[38;2;255;175;193m👾 Setup your pinocchio project blazingly fast💨 \x1b[0m");
+
+    println!("\x1b[0m");
+    println!("🏗️ Available commands:");
+    println!("\x1b[38;2;255;175;193m$ chio init <project_name>\x1b[0m - Initialize a new Pinocchio project");
+    println!("\x1b[38;2;255;175;193m$ chio build\x1b[0m               - Build the project");
+    println!("\x1b[38;2;255;175;193m$ chio test\x1b[0m                - Run project tests");
+    println!("\x1b[38;2;255;175;193m$ chio deploy\x1b[0m              - Deploy the project");
+
+    println!("\x1b[38;2;230;230;230m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m");
+
+    Ok(())
+}
+
+fn init_project(project_name: &str) -> Result<()> {
+    println!("\x1b[38;2;255;175;193m"); // Custom RGB color for light pink (similar to the rabbit's ear)
+    println!(
+        r#"
+      *     *       
+  ___| |__ (_) ___  
+ / __| '_ \| |/ _ \ 
+| (__| | | | | (_) |
+ \___|_| |_|_|\___/ 
+                    
+ "#
     );
     println!("\x1b[0m");
-
     // Display project initialization message with styling
     println!(
-        "\x1b[38;2;255;160;122m🚀 Initializing Chio Project: {}\x1b[0m",
+        "\x1b[38;2;255;175;193m🧑🏻‍🍳 Initializing your pinocchio project: {}\x1b[0m",
         project_name
     );
-    println!("\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m");
-
-    // Create the project directory
+    println!("\x1b[38;2;230;230;230m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m"); // Create the project directory
     let project_dir = Path::new(project_name);
     fs::create_dir_all(project_dir)
         .with_context(|| format!("Failed to create project directory: {}", project_name))?;
@@ -105,25 +137,26 @@ fn init_project(project_name: &str) -> Result<()> {
         address = String::new();
     }
     // Use this user address in unit_tests
-    println!("Solana address: {}", address);
+    //println!("Solana address: {}", address);
 
     // create project structure and Cargo.toml
     create_project_structure(project_dir, address)?;
     update_cargo_toml(project_dir, project_name)?;
 
-    // adding something to create keypair and put that address to program in lib.rs
+    // TODO: adding something to create keypair and put that address to program in lib.rs
 
-    println!("\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m");
+    println!("\x1b[38;2;230;230;230m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m");
     println!(
-        "\x1b[38;2;255;160;122m✅ Project '{}' initialized successfully!\x1b[0m",
+        "\x1b[38;2;255;175;193m✅ Pinocchio Project '{}' initialized successfully!\x1b[0m",
         project_name
     );
-    println!("\x1b[38;2;255;160;122m$ cd {}\x1b[0m", project_name);
-    println!("\x1b[38;2;255;160;122m$ chio build\x1b[0m");
-    println!("\x1b[38;2;255;160;122m$ chio deploy\x1b[0m");
-    println!("\x1b[38;2;255;160;122m$ chio help\x1b[0m");
+    println!("\n\x1b[38;2;255;175;193m📋 Next steps:\x1b[0m");
+    println!("\x1b[38;2;255;175;193m$ cd {}\x1b[0m", project_name);
+    println!("\x1b[38;2;255;175;193m$ chio build\x1b[0m");
+    println!("\x1b[38;2;255;175;193m$ chio test\x1b[0m");
+    println!("\x1b[38;2;255;175;193m$ chio deploy\x1b[0m");
+    println!("\x1b[38;2;230;230;230m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m");
 
-    println!("\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m");
     Ok(())
 }
 
