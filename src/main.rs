@@ -67,15 +67,15 @@ fn display_help_banner() -> Result<()> {
  \___|_| |_|_|\___/ 
  "#
     );
-
-    println!("\x1b[38;2;255;175;193m👾 Setup your pinocchio project blazingly fast💨 \x1b[0m");
-
     println!("\x1b[0m");
-    println!("🏗️ Available commands:");
-    println!("\x1b[38;2;255;175;193m$ chio init <project_name>\x1b[0m - Initialize a new Pinocchio project");
-    println!("\x1b[38;2;255;175;193m$ chio build\x1b[0m               - Build the project");
-    println!("\x1b[38;2;255;175;193m$ chio test\x1b[0m                - Run project tests");
-    println!("\x1b[38;2;255;175;193m$ chio deploy\x1b[0m              - Deploy the project");
+
+    println!("👾 Setup your pinocchio project blazingly fast💨");
+
+    println!("\n🏗️ AVAILABLE COMMANDS:");
+    println!("   chio init <project_name> - Initialize a new Pinocchio project");
+    println!("   chio build               - Build the project");
+    println!("   chio test                - Run project tests");
+    println!("   chio deploy              - Deploy the project");
 
     println!("\x1b[38;2;230;230;230m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m");
 
