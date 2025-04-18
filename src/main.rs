@@ -108,7 +108,7 @@ fn init_project(project_name: &str) -> Result<()> {
     println!("Solana address: {}", address);
 
     // create project structure and Cargo.toml
-    create_project_structure(project_dir)?;
+    create_project_structure(project_dir, address)?;
     update_cargo_toml(project_dir, project_name)?;
 
     // adding something to create keypair and put that address to program in lib.rs
@@ -127,7 +127,7 @@ fn init_project(project_name: &str) -> Result<()> {
     Ok(())
 }
 
-fn create_project_structure(project_dir: &Path) -> Result<()> {
+fn create_project_structure(project_dir: &Path, address: String) -> Result<()> {
     // Create configuration files root folder
     fs::write(project_dir.join("README.md"), templates::readme_md())?;
     fs::write(project_dir.join(".gitignore"), templates::gitignore())?;
@@ -171,6 +171,15 @@ fn create_project_structure(project_dir: &Path) -> Result<()> {
         templates::states::states_mod_rs(),
     )?;
     fs::write(states_dir.join("utils.rs"), templates::states::utils_rs())?;
+
+    //creating unit_tests folder
+    let test_dir = project_dir.join("tests");
+    fs::create_dir_all(&test_dir)?;
+
+    fs::write(
+        test_dir.join("unit_tests.rs"),
+        templates::unit_tests::unit_test_rs(&address),
+    )?;
 
     Ok(())
 }
