@@ -32,8 +32,11 @@ chio init my-project
 
 TODO
 - add testcase folder
+    - pass user address to testcase file
+- change the banner 
 - add wrap to command like 
-    - `chio build` -> `cargo build-sbf`
+    - `chio build` -> `cargo build-sbf` # half done
     - `chio test` -> `cargo test --features test-default`
     - `chio deploy` -> `solana program deploy ./target/debug/<project_name>.so`
     - `chio bench` -> `cargo bench --features bench-default`
+- refactor
