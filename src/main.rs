@@ -18,11 +18,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new Bruno project
-    Init {
-        /// Name of the project
-        project_name: String,
-    },
+    Init { project_name: String },
+    Build,
 }
 
 fn main() -> Result<()> {
@@ -31,6 +28,20 @@ fn main() -> Result<()> {
     match &cli.command {
         Commands::Init { project_name } => {
             init_project(project_name)?;
+        }
+        Commands::Build => {
+            println!("Building project");
+            let status = Command::new("cargo")
+                .arg("build-sbf")
+                .spawn()?
+                .wait()
+                .with_context(|| "Failed to build project")?;
+
+            if !status.success() {
+                anyhow::bail!("Build failed with exit code: {:?}", status.code());
+            } else {
+                println!("Build completed successfully!");
+            }
         }
     }
 
@@ -107,7 +118,6 @@ fn init_project(project_name: &str) -> Result<()> {
         "\x1b[38;2;255;160;122m✅ Project '{}' initialized successfully!\x1b[0m",
         project_name
     );
-    println!("\n\x1b[38;2;255;160;122m📋 Next steps:\x1b[0m");
     println!("\x1b[38;2;255;160;122m$ cd {}\x1b[0m", project_name);
     println!("\x1b[38;2;255;160;122m$ chio build\x1b[0m");
     println!("\x1b[38;2;255;160;122m$ chio deploy\x1b[0m");
