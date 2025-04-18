@@ -34,7 +34,7 @@ TODO
 - add testcase folder
     - pass user address to testcase file ✅
     - change the build file path
-- create a good readme
+- create a good readme ✅       
 - change the banner 
 - add wrap to command like 
     - `chio build` -> `cargo build-sbf` # half done
