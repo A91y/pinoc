@@ -124,6 +124,7 @@ my-project/
   - `chio deploy` → `solana program deploy ./target/debug/<project_name>.so`
   - `chio bench` → `cargo bench --features bench-default`
 - Update banner and styling
+- Fix the imports in `unit_tests.rs`
 
 ### Planned 📋
 - Add more sophisticated testing templates
