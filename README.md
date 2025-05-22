@@ -125,6 +125,7 @@ my-project/
   - `chio bench` → `cargo bench --features bench-default`
 - Update banner and styling
 - Fix the imports in `unit_tests.rs`
+- experimenting IDL generation : https://github.com/metaplex-foundation/solita
 
 ### Planned 📋
 - Reduced the boiler plate code
