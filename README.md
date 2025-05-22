@@ -127,7 +127,7 @@ my-project/
 - Fix the imports in `unit_tests.rs`
 
 ### Planned 📋
-- Add more sophisticated testing templates
+- Reduced the boiler plate code
 - Improve error handling
 - Add configuration options
 - proper gitbook for the project
