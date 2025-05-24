@@ -129,6 +129,7 @@ my-project/
 
 ### Planned 📋
 - Reduced the boiler plate code
+- Add template options (for token programs)
 - Improve error handling
 - Add configuration options
 - proper gitbook for the project
