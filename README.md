@@ -119,12 +119,13 @@ my-project/
 - Implement `chio build` command
 
 ### In Progress 🚧
-- Implement remaining command wrappers:
+- [] Implement remaining command wrappers:
   - `chio test` → `cargo test --features test-default`
   - `chio deploy` → `solana program deploy ./target/debug/<project_name>.so`
   - `chio bench` → `cargo bench --features bench-default`
 - Update banner and styling
 - Fix the imports in `unit_tests.rs`
+- Create keypair program when initialize
 - experimenting IDL generation : https://github.com/metaplex-foundation/solita
 
 ### Planned 📋
