@@ -1,8 +1,10 @@
 pub mod templates {
 
     //lib.rs
-    pub fn lib_rs() -> &'static str {
-        r#"//#![feature(const_mut_refs)]
+
+    pub fn lib_rs(address: &str) -> String {
+        format!(
+            r#"//#![feature(const_mut_refs)]
 #![no_std]
 
 #[cfg(not(feature = "no-entrypoint"))]
@@ -15,50 +17,45 @@ pub mod errors;
 pub mod instructions;
 pub mod states;
 
-pinocchio_pubkey::declare_id!("HhEs5ZBwrR29fQNxELBFdRN7mAvhJNP1R6xgNNL2ZkSD");        "#
+pinocchio_pubkey::declare_id!("{}");"#,
+            address
+        )
     }
 
     // entrypoint.rs template
     pub fn entrypoint_rs() -> &'static str {
         r#"#![allow(unexpected_cfgs)]
+
+use crate::instruction::{self, MyProgramInstruction};
 use pinocchio::{
-    account_info::AccountInfo, no_allocator, nostd_panic_handler, program_entrypoint,
+    account_info::AccountInfo, default_panic_handler, msg, no_allocator, program_entrypoint,
     program_error::ProgramError, pubkey::Pubkey, ProgramResult,
 };
-use pinocchio_log::log;
 
-use crate::instructions::{self, VaultInstructions};
-
+// This is the entrypoint for the program.
 program_entrypoint!(process_instruction);
 //Do not allocate memory.
 no_allocator!();
 // Use the no_std panic handler.
-#[cfg(target_os = "solana")]
-nostd_panic_handler!();
+default_panic_handler!();
 
-pub fn process_instruction(
+#[inline(always)]
+fn process_instruction(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-
-    let (discriminator_variant, instruction_data) = instruction_data
+    let (ix_disc, instruction_data) = instruction_data
         .split_first()
         .ok_or(ProgramError::InvalidInstructionData)?;
 
-    match VaultInstructions::try_from(discriminator_variant)? {
-        VaultInstructions::Deposit => {
-            log!("Deposit");
-            instructions::process_deposit(accounts, instruction_data)?;
-        }
-        VaultInstructions::Withdraw => {
-            log!("Withdraw");
-            instructions::process_withdraw(accounts, instruction_data)?;
+    match MyProgramInstruction::try_from(ix_disc)? {
+        MyProgramInstruction::Initialize => {
+            msg!("Initialize");
+            instruction::initilaize(accounts, instruction_data)
         }
     }
-
-    Ok(())
-}        "#
+}       "#
     }
 
     // Configuration files

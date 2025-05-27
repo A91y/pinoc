@@ -34,7 +34,7 @@ fn main() -> Result<()> {
             init_project(project_name)?;
         }
         Commands::Build => {
-            println!("Building project");
+            println!("Building program");
             let status = Command::new("cargo")
                 .arg("build-sbf")
                 .spawn()?
@@ -45,6 +45,20 @@ fn main() -> Result<()> {
                 anyhow::bail!("Build failed with exit code: {:?}", status.code());
             } else {
                 println!("Build completed successfully!");
+            }
+        }
+        Commands::Build => {
+            println!("Testing program");
+            let status = Command::new("cargo")
+                .arg("test")
+                .spawn()?
+                .wait()
+                .with_context(|| "Failed to test project")?;
+
+            if !status.success() {
+                anyhow::bail!("Test failed with exit code: {:?}", status.code());
+            } else {
+                println!("Tested successfully!");
             }
         }
         Commands::Help => {
@@ -170,7 +184,9 @@ fn create_project_structure(project_dir: &Path, address: String) -> Result<()> {
     fs::create_dir_all(&src_dir)?;
 
     // Create lib.rs
-    fs::write(src_dir.join("lib.rs"), templates::lib_rs())?;
+    // TODO: Pass program address
+    let address = "Fg6PaFpoGXkYsidMpWxTWqMRMLuV7tQJjdtc1AGtX9pN";
+    fs::write(src_dir.join("lib.rs"), templates::lib_rs(address))?;
 
     // Create entrypoint.rs
     fs::write(src_dir.join("entrypoint.rs"), templates::entrypoint_rs())?;
