@@ -15,7 +15,6 @@ pub mod errors;
 pub mod instructions;
 pub mod states;
 
-//After build is successful get the program pubkey and replace it here
 pinocchio_pubkey::declare_id!("HhEs5ZBwrR29fQNxELBFdRN7mAvhJNP1R6xgNNL2ZkSD");        "#
     }
 
