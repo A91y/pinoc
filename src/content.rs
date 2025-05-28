@@ -26,7 +26,7 @@ pinocchio_pubkey::declare_id!("{}");"#,
     pub fn entrypoint_rs() -> &'static str {
         r#"#![allow(unexpected_cfgs)]
 
-use crate::instruction::{self, MyProgramInstruction};
+use crate::instructions::{self, ProgramInstruction};
 use pinocchio::{
     account_info::AccountInfo, default_panic_handler, msg, no_allocator, program_entrypoint,
     program_error::ProgramError, pubkey::Pubkey, ProgramResult,
@@ -49,13 +49,13 @@ fn process_instruction(
         .split_first()
         .ok_or(ProgramError::InvalidInstructionData)?;
 
-    match MyProgramInstruction::try_from(ix_disc)? {
-        MyProgramInstruction::Initialize => {
-            msg!("Initialize");
+    match ProgramInstruction::try_from(ix_disc)? {
+        ProgramInstruction::InitializeState => {
+            msg!("Ix:0");
             instruction::initilaize(accounts, instruction_data)
         }
     }
-}       "#
+}      "#
     }
 
     // Configuration files
@@ -122,77 +122,96 @@ pinocchio_pubkey::declare_id!("YourProgramIdHere");
     pub fn errors_rs() -> &'static str {
         r#"use pinocchio::program_error::ProgramError;
 
-#[derive(Clone, PartialEq)]
-pub enum MyProgramError {
-    // overflow error
-    WriteOverflow,
-    // invalid instruction data
-    InvalidInstructionData,
-    // pda mismatch
-    PdaMismatch,
-    // Invalid Owner
-    InvalidOwner,
-    // Not a system account
-    InvalidAccount,
-    //Incorect Vault
-    IncorrectVaultAcc,
-}
+        #[derive(Clone, PartialEq)]
+        pub enum MyProgramError {
+            InvalidInstructionData,
+            PdaMismatch,
+            InvalidOwner,
+        }
 
-impl From<MyProgramError> for ProgramError {
-    fn from(e: MyProgramError) -> Self {
-        Self::Custom(e as u32)
-    }
-}
-            "#
+        impl From<MyProgramError> for ProgramError {
+            fn from(e: MyProgramError) -> Self {
+                Self::Custom(e as u32)
+            }
+        }       
+"#
     }
 
     pub mod instructions {
-        pub fn deposit_rs() -> &'static str {
-            r#"use pinocchio::{account_info::AccountInfo, program_error::ProgramError, pubkey, ProgramResult};
+        pub fn initilaize() -> &'static str {
+            r#"use pinocchio::{
+    account_info::AccountInfo,
+    instruction::{Seed, Signer},
+    program_error::ProgramError,
+    pubkey::Pubkey,
+    sysvars::rent::Rent,
+    ProgramResult,
+};
 
-use pinocchio_system::instructions::Transfer;
+use pinocchio_system::instructions::CreateAccount;
 
-pub const LAMPORTS: u64 = 1_000_000_000;
-
-use crate::states::{load_ix_data, DataLen};
+use crate::{
+    errors::MyProgramError,
+    states::{
+        utils::{load_ix_data, DataLen},
+        MyState,
+    },
+};
 
 #[repr(C)]
-pub struct DepositData {
-    pub amount: u64,
+#[derive(Clone, Copy, Debug, PartialEq, shank::ShankType)]
+pub struct Initialize {
+    pub owner: Pubkey,
     pub bump: u8,
 }
 
-impl DataLen for DepositData {
-    const LEN: usize = core::mem::size_of::<DepositData>();
+impl DataLen for Initialize {
+    const LEN: usize = core::mem::size_of::<Initialize>();
 }
 
-pub fn process_deposit(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
-    let [deposit_account, vault_account, _system_program] = accounts else {
+pub fn initilaize(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
+    let [payer_acc, state_acc, sysvar_rent_acc, _system_program] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if !deposit_account.is_signer() {
+    if !payer_acc.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // check the CU after implementing unsafe {} block here
-    let ix_data = load_ix_data::<DepositData>(data)?;
-
-    let vault_pda = pubkey::create_program_address(
-        &["vault".as_bytes(), deposit_account.key(), &[ix_data.bump]],
-        &crate::ID,
-    )?;
-
-    if vault_account.key() != &vault_pda {
-        return Err(ProgramError::InvalidAccountData);
+    if !state_acc.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    Transfer {
-        from: deposit_account,
-        to: vault_account,
-        lamports: ix_data.amount * LAMPORTS,
+    let rent = Rent::from_account_info(sysvar_rent_acc)?;
+
+    let ix_data = unsafe { load_ix_data::<Initialize>(data)? };
+
+    if ix_data.owner.ne(payer_acc.key()) {
+        return Err(MyProgramError::InvalidOwner.into());
     }
-    .invoke()?;
+
+    let pda_bump_bytes = [ix_data.bump];
+
+    MyState::validate_pda(ix_data.bump, state_acc.key(), &ix_data.owner)?;
+
+    // signer seeds
+    let signer_seeds = [
+        Seed::from(MyState::SEED.as_bytes()),
+        Seed::from(&ix_data.owner),
+        Seed::from(&pda_bump_bytes[..]),
+    ];
+    let signers = [Signer::from(&signer_seeds[..])];
+
+    CreateAccount {
+        from: payer_acc,
+        to: state_acc,
+        space: MyState::LEN as u64,
+        owner: &crate::ID,
+        lamports: rent.minimum_balance(MyState::LEN),
+    }
+    .invoke_signed(&signers)?;
+
+    MyState::initialize(state_acc, ix_data)?;
 
     Ok(())
 }"#
@@ -201,160 +220,123 @@ pub fn process_deposit(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
         pub fn instructions_mod_rs() -> &'static str {
             r#"use pinocchio::program_error::ProgramError;
 
-pub mod deposit;
-pub mod withdraw;
+pub mod initialize;
 
-pub use deposit::*;
-pub use withdraw::*;
+pub use initialize::*;
 
 #[repr(u8)]
-pub enum VaultInstructions {
-    Deposit,
-    Withdraw,
+pub enum ProgramInstruction {
+    Initialize,
 }
 
-impl TryFrom<&u8> for VaultInstructions {
+impl TryFrom<&u8> for ProgramInstruction {
     type Error = ProgramError;
 
     fn try_from(value: &u8) -> Result<Self, Self::Error> {
         match *value {
-            0 => Ok(VaultInstructions::Deposit),
-            1 => Ok(VaultInstructions::Withdraw),
+            0 => Ok(ProgramInstruction::Initialize),
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
-}"#
-        }
-
-        pub fn withdraw_rs() -> &'static str {
-            r#"use pinocchio::{
-    account_info::AccountInfo,
-    instruction::{Seed, Signer},
-    program_error::ProgramError,
-    pubkey::{self},
-    ProgramResult,
-};
-use pinocchio_system::instructions::Transfer;
-
-use crate::errors::MyProgramError;
-
-pub fn process_withdraw(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
-    let [withtdraw_account, vault_account, _system_program] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
-    if !withtdraw_account.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-
-    if !vault_account.data_is_empty() && vault_account.lamports() > 0 {
-        return Err(MyProgramError::InvalidAccount.into());
-    }
-
-    let bump = data[0];
-
-    let seed = ["vault".as_bytes(), withtdraw_account.key(), &[bump]];
-    let vault_pda = pubkey::create_program_address(&seed, &crate::ID)?;
-
-    if vault_pda != *vault_account.key() {
-        return Err(MyProgramError::IncorrectVaultAcc.into());
-    };
-
-    let pda_byte_bump = [bump];
-    let signer_seed = [
-        Seed::from("vault".as_bytes()),
-        Seed::from(withtdraw_account.key()),
-        Seed::from(&pda_byte_bump),
-    ];
-
-    let signer = [Signer::from(&signer_seed)];
-
-    Transfer {
-        from: vault_account,
-        to: withtdraw_account,
-        lamports: vault_account.lamports(),
-    }
-    .invoke_signed(&signer)?;
-
-    Ok(())
-}"#
+}
+            "#
         }
     }
 
     pub mod states {
         pub fn states_mod_rs() -> &'static str {
-            r#"pub mod utils;
+            r#"pub mod state;
+pub mod utils;
 
-pub use utils::*;
+pub use state::*;
+pub use utils::*;            "#
+        }
 
-            "#
+        pub fn state_rs() -> &'static str {
+            r#"
+use super::utils::{load_acc_mut_unchecked, DataLen};
+use pinocchio::{
+    account_info::AccountInfo,
+    program_error::ProgramError,
+    pubkey::{self, Pubkey},
+    ProgramResult,
+};
+
+use crate::{errors::MyProgramError, instructions::Initialize};
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MyState {
+    pub owner: Pubkey,
+}
+
+impl DataLen for MyState {
+    const LEN: usize = core::mem::size_of::<MyState>();
+}
+
+impl MyState {
+    pub const SEED: &'static str = "init";
+
+    pub fn validate_pda(bump: u8, pda: &Pubkey, owner: &Pubkey) -> Result<(), ProgramError> {
+        let seed_with_bump = &[Self::SEED.as_bytes(), owner, &[bump]];
+        let derived = pubkey::create_program_address(seed_with_bump, &crate::ID)?;
+        if derived != *pda {
+            return Err(MyProgramError::PdaMismatch.into());
+        }
+        Ok(())
+    }
+
+    pub fn initialize(my_stata_acc: &AccountInfo, ix_data: &Initialize) -> ProgramResult {
+        let my_state =
+            unsafe { load_acc_mut_unchecked::<MyState>(my_stata_acc.borrow_mut_data_unchecked()) }?;
+
+        my_state.owner = ix_data.owner;
+        Ok(())
+    }
+}
+                "#
         }
 
         pub fn utils_rs() -> &'static str {
-            r#"use pinocchio::program_error::ProgramError;
+            r#"use super::utils::{load_acc_mut_unchecked, DataLen};
+use pinocchio::{
+    account_info::AccountInfo,
+    program_error::ProgramError,
+    pubkey::{self, Pubkey},
+    ProgramResult,
+};
 
-use crate::errors::MyProgramError;
+use crate::{errors::MyProgramError, instructions::Initialize};
 
-pub trait DataLen {
-    const LEN: usize;
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, shank::ShankAccount)]
+pub struct MyState {
+    pub owner: Pubkey,
 }
 
-pub trait Initialized {
-    fn is_initialized(&self) -> bool;
+impl DataLen for MyState {
+    const LEN: usize = core::mem::size_of::<MyState>();
 }
 
-#[inline(always)]
-pub fn load_acc<T: DataLen + Initialized>(bytes: &[u8]) -> Result<&T, ProgramError> {
-    load_acc_unchecked::<T>(bytes).and_then(|acc| {
-        if acc.is_initialized() {
-            Ok(acc)
-        } else {
-            Err(ProgramError::UninitializedAccount)
+impl MyState {
+    pub const SEED: &'static str = "init";
+
+    pub fn validate_pda(bump: u8, pda: &Pubkey, owner: &Pubkey) -> Result<(), ProgramError> {
+        let seed_with_bump = &[Self::SEED.as_bytes(), owner, &[bump]];
+        let derived = pubkey::create_program_address(seed_with_bump, &crate::ID)?;
+        if derived != *pda {
+            return Err(MyProgramError::PdaMismatch.into());
         }
-    })
-}
-
-#[inline(always)]
-pub fn load_acc_unchecked<T: DataLen>(bytes: &[u8]) -> Result<&T, ProgramError> {
-    if bytes.len() != T::LEN {
-        return Err(ProgramError::InvalidAccountData);
+        Ok(())
     }
-    Ok(unsafe { &*(bytes.as_ptr() as *const T) })
-}
 
-#[inline(always)]
-pub fn load_acc_mut<T: DataLen + Initialized>(bytes: &mut [u8]) -> Result<&mut T, ProgramError> {
-    load_acc_mut_unchecked::<T>(bytes).and_then(|acc| {
-        if acc.is_initialized() {
-            Ok(acc)
-        } else {
-            Err(ProgramError::UninitializedAccount)
-        }
-    })
-}
+    pub fn initialize(my_stata_acc: &AccountInfo, ix_data: &Initialize) -> ProgramResult {
+        let my_state =
+            unsafe { load_acc_mut_unchecked::<MyState>(my_stata_acc.borrow_mut_data_unchecked()) }?;
 
-#[inline(always)]
-pub fn load_acc_mut_unchecked<T: DataLen>(bytes: &mut [u8]) -> Result<&mut T, ProgramError> {
-    if bytes.len() != T::LEN {
-        return Err(ProgramError::InvalidAccountData);
+        my_state.owner = ix_data.owner;
+        Ok(())
     }
-    Ok(unsafe { &mut *(bytes.as_mut_ptr() as *mut T) })
-}
-
-#[inline(always)]
-pub fn load_ix_data<T: DataLen>(bytes: &[u8]) -> Result<&T, ProgramError> {
-    if bytes.len() != T::LEN {
-        return Err(MyProgramError::InvalidInstructionData.into());
-    }
-    Ok(unsafe { &*(bytes.as_ptr() as *const T) })
-}
-
-pub fn to_bytes<T: DataLen>(data: &T) -> &[u8] {
-    unsafe { core::slice::from_raw_parts(data as *const T as *const u8, T::LEN) }
-}
-
-pub fn to_mut_bytes<T: DataLen>(data: &mut T) -> &mut [u8] {
-    unsafe { core::slice::from_raw_parts_mut(data as *mut T as *mut u8, T::LEN) }
 }"#
         }
     }

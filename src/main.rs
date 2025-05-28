@@ -203,12 +203,8 @@ fn create_project_structure(project_dir: &Path, address: String) -> Result<()> {
         templates::instructions::instructions_mod_rs(),
     )?;
     fs::write(
-        instructions_dir.join("deposit.rs"),
-        templates::instructions::deposit_rs(),
-    )?;
-    fs::write(
-        instructions_dir.join("withdraw.rs"),
-        templates::instructions::withdraw_rs(),
+        instructions_dir.join("initilaize.rs"),
+        templates::instructions::initilaize(),
     )?;
 
     //Creating states folder and .rs(s)
@@ -220,6 +216,8 @@ fn create_project_structure(project_dir: &Path, address: String) -> Result<()> {
         templates::states::states_mod_rs(),
     )?;
     fs::write(states_dir.join("utils.rs"), templates::states::utils_rs())?;
+
+    fs::write(states_dir.join("state.rs"), templates::states::state_rs())?;
 
     //creating unit_tests folder
     let test_dir = project_dir.join("tests");
