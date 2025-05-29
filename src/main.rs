@@ -223,6 +223,7 @@ fn create_project_structure(project_dir: &Path, address: String) -> Result<()> {
     let test_dir = project_dir.join("tests");
     fs::create_dir_all(&test_dir)?;
 
+    let address = "Fg6PaFpoGXkYsidMpWxTWqMRMLuV7tQJjdtc1AGtX9pN";
     fs::write(
         test_dir.join("unit_tests.rs"),
         templates::unit_tests::unit_test_rs(&address),
