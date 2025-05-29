@@ -203,7 +203,7 @@ fn create_project_structure(project_dir: &Path, address: String) -> Result<()> {
         templates::instructions::instructions_mod_rs(),
     )?;
     fs::write(
-        instructions_dir.join("initilaize.rs"),
+        instructions_dir.join("initialize.rs"),
         templates::instructions::initilaize(),
     )?;
 

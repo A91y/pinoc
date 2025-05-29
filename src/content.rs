@@ -4,8 +4,7 @@ pub mod templates {
 
     pub fn lib_rs(address: &str) -> String {
         format!(
-            r#"//#![feature(const_mut_refs)]
-#![no_std]
+            r#"#![no_std]
 
 #[cfg(not(feature = "no-entrypoint"))]
 mod entrypoint;
@@ -50,12 +49,12 @@ fn process_instruction(
         .ok_or(ProgramError::InvalidInstructionData)?;
 
     match ProgramInstruction::try_from(ix_disc)? {
-        ProgramInstruction::Initialize => {
-            msg!("Ix:0");
+        ProgramInstruction::InitializeState => {
+            msg!("Initilaize");
             instructions::initilaize(accounts, instruction_data)
         }
     }
-}      "#
+}"#
     }
 
     // Configuration files
@@ -132,8 +131,8 @@ pub enum MyProgramError {
 impl From<MyProgramError> for ProgramError {
     fn from(e: MyProgramError) -> Self {
         Self::Custom(e as u32)
-       }
-    }       
+    }
+}       
 "#
     }
 
@@ -220,13 +219,13 @@ pub fn initilaize(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
         pub fn instructions_mod_rs() -> &'static str {
             r#"use pinocchio::program_error::ProgramError;
 
-pub mod initilaize;
+pub mod initialize;
 
-pub use initilaize::*;
+pub use initialize::*;
 
 #[repr(u8)]
 pub enum ProgramInstruction {
-    Initialize,
+    InitializeState,
 }
 
 impl TryFrom<&u8> for ProgramInstruction {
@@ -234,7 +233,7 @@ impl TryFrom<&u8> for ProgramInstruction {
 
     fn try_from(value: &u8) -> Result<Self, Self::Error> {
         match *value {
-            0 => Ok(ProgramInstruction::Initialize),
+            0 => Ok(ProgramInstruction::InitializeState),
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -248,12 +247,11 @@ impl TryFrom<&u8> for ProgramInstruction {
 pub mod utils;
 
 pub use state::*;
-pub use utils::*;            "#
+pub use utils::*;"#
         }
 
         pub fn state_rs() -> &'static str {
-            r#"
-use super::utils::{load_acc_mut_unchecked, DataLen};
+            r#"use super::utils::{load_acc_mut_unchecked, DataLen};
 use pinocchio::{
     account_info::AccountInfo,
     program_error::ProgramError,
@@ -292,8 +290,7 @@ impl MyState {
         my_state.owner = ix_data.owner;
         Ok(())
     }
-}
-                "#
+}"#
         }
 
         pub fn utils_rs() -> &'static str {
@@ -305,40 +302,12 @@ pub trait DataLen {
     const LEN: usize;
 }
 
-pub trait Initialized {
-    fn is_initialized(&self) -> bool;
-}
-
-#[inline(always)]
-pub unsafe fn load_acc<T: DataLen + Initialized>(bytes: &[u8]) -> Result<&T, ProgramError> {
-    load_acc_unchecked::<T>(bytes).and_then(|acc| {
-        if acc.is_initialized() {
-            Ok(acc)
-        } else {
-            Err(ProgramError::UninitializedAccount)
-        }
-    })
-}
-
 #[inline(always)]
 pub unsafe fn load_acc_unchecked<T: DataLen>(bytes: &[u8]) -> Result<&T, ProgramError> {
     if bytes.len() != T::LEN {
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(&*(bytes.as_ptr() as *const T))
-}
-
-#[inline(always)]
-pub unsafe fn load_acc_mut<T: DataLen + Initialized>(
-    bytes: &mut [u8],
-) -> Result<&mut T, ProgramError> {
-    load_acc_mut_unchecked::<T>(bytes).and_then(|acc| {
-        if acc.is_initialized() {
-            Ok(acc)
-        } else {
-            Err(ProgramError::UninitializedAccount)
-        }
-    })
 }
 
 #[inline(always)]
