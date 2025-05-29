@@ -122,18 +122,18 @@ pinocchio_pubkey::declare_id!("YourProgramIdHere");
     pub fn errors_rs() -> &'static str {
         r#"use pinocchio::program_error::ProgramError;
 
-        #[derive(Clone, PartialEq)]
-        pub enum MyProgramError {
-            InvalidInstructionData,
-            PdaMismatch,
-            InvalidOwner,
-        }
+#[derive(Clone, PartialEq)]
+pub enum MyProgramError {
+    InvalidInstructionData,
+    PdaMismatch,
+    InvalidOwner,
+}
 
-        impl From<MyProgramError> for ProgramError {
-            fn from(e: MyProgramError) -> Self {
-                Self::Custom(e as u32)
-            }
-        }       
+impl From<MyProgramError> for ProgramError {
+    fn from(e: MyProgramError) -> Self {
+        Self::Custom(e as u32)
+       }
+    }       
 "#
     }
 
