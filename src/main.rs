@@ -4,7 +4,6 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-// Import the content module
 mod content;
 use content::templates;
 
@@ -66,7 +65,6 @@ fn main() -> Result<()> {
         Commands::Deploy => {
             println!("Deploying program");
 
-            // First, find the .so file
             let target_deploy_dir = Path::new("target/deploy");
             if !target_deploy_dir.exists() {
                 anyhow::bail!("target/deploy directory not found. Please run 'chio build' first.");
@@ -111,7 +109,7 @@ fn main() -> Result<()> {
 }
 
 fn display_help_banner() -> Result<()> {
-    // Display the banner
+    // banner
     println!("\x1b[38;2;255;175;193m");
     println!(
         r#"
@@ -150,7 +148,6 @@ fn init_project(project_name: &str) -> Result<()> {
  "#
     );
     println!("\x1b[0m");
-    // Display project initialization message with styling
     println!(
         "\x1b[38;2;255;175;193m🧑🏻‍🍳 Initializing your pinocchio project: {}\x1b[0m",
         project_name
@@ -160,7 +157,7 @@ fn init_project(project_name: &str) -> Result<()> {
     fs::create_dir_all(project_dir)
         .with_context(|| format!("Failed to create project directory: {}", project_name))?;
 
-    // Create a new Cargo project inside
+    // init new cargo project inside
     let output = Command::new("cargo")
         .arg("init")
         .arg("--lib")
@@ -175,17 +172,16 @@ fn init_project(project_name: &str) -> Result<()> {
         anyhow::bail!("Failed to initialize Cargo project: {}", error);
     }
 
-    // Create target/deploy directory
     let deploy_dir = project_dir.join("target").join("deploy");
     fs::create_dir_all(&deploy_dir)?;
 
-    // Generate keypair with empty passphrase
+    // generate keypair
     let keypair_path = format!("./target/deploy/{}-keypair.json", project_name);
     let keygen_output = Command::new("solana-keygen")
         .arg("new")
         .arg("-o")
         .arg(&keypair_path)
-        .arg("--no-bip39-passphrase") // Skip the passphrase prompt
+        .arg("--no-bip39-passphrase") // skip the passphrase prompt
         .current_dir(project_dir)
         .output()
         .with_context(|| "Failed to generate keypair")?;
@@ -195,7 +191,6 @@ fn init_project(project_name: &str) -> Result<()> {
         anyhow::bail!("Failed to generate keypair: {}", error);
     }
 
-    // Read the program address from the generated keypair
     let address_output = Command::new("solana")
         .arg("address")
         .arg("-k")
@@ -215,7 +210,7 @@ fn init_project(project_name: &str) -> Result<()> {
         anyhow::bail!("Failed to get program address from keypair: {}", error);
     }
 
-    // Get user's wallet address (for unit tests)
+    // get user's wallet address
     let user_address_output = Command::new("solana")
         .arg("address")
         .current_dir(project_dir)
@@ -233,7 +228,6 @@ fn init_project(project_name: &str) -> Result<()> {
         user_address = String::new();
     }
 
-    // Create project structure with the generated program address
     create_project_structure(project_dir, user_address, program_address.clone())?;
     update_cargo_toml(project_dir, project_name)?;
 
@@ -257,27 +251,21 @@ fn create_project_structure(
     user_address: String,
     program_address: String,
 ) -> Result<()> {
-    // Create configuration files root folder
     fs::write(project_dir.join("README.md"), templates::readme_md())?;
     fs::write(project_dir.join(".gitignore"), templates::gitignore())?;
 
-    // Create src directory structure
     let src_dir = project_dir.join("src");
     fs::create_dir_all(&src_dir)?;
 
-    // Create lib.rs with the generated program address
     fs::write(
         src_dir.join("lib.rs"),
         templates::lib_rs(program_address.as_str()),
     )?;
 
-    // Create entrypoint.rs
     fs::write(src_dir.join("entrypoint.rs"), templates::entrypoint_rs())?;
 
-    // Create errors.rs
     fs::write(src_dir.join("errors.rs"), templates::errors_rs())?;
 
-    //Creating instruction folder and .rs(s)
     let instructions_dir = src_dir.join("instructions");
     fs::create_dir_all(&instructions_dir)?;
 
@@ -290,7 +278,6 @@ fn create_project_structure(
         templates::instructions::initilaize(),
     )?;
 
-    //Creating states folder and .rs(s)
     let states_dir = src_dir.join("states");
     fs::create_dir_all(&states_dir)?;
 
@@ -302,16 +289,10 @@ fn create_project_structure(
 
     fs::write(states_dir.join("state.rs"), templates::states::state_rs())?;
 
-    //creating unit_tests folder
     let test_dir = project_dir.join("tests");
     fs::create_dir_all(&test_dir)?;
 
-    // Use the user's address for unit tests and pass project name and program address
-    let test_address = if user_address.is_empty() {
-        "Fg6PaFpoGXkYsidMpWxTWqMRMLuV7tQJjdtc1AGtX9pN" // fallback address
-    } else {
-        &user_address
-    };
+    let test_address = &user_address;
 
     let project_name = project_dir
         .file_name()
@@ -365,4 +346,3 @@ name = "unit_tests""#,
 
     Ok(())
 }
-

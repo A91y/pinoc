@@ -435,4 +435,3 @@ fn test_initialize_mystate() {
         }
     }
 }
-
