@@ -248,6 +248,7 @@ pinocchio-log = "0.4.0"
 pinocchio-pubkey = "0.2.4"
 pinocchio-system = "0.2.3"
 pinocchio-token = "0.3.0"
+shank = "0.4.2"
 
 [dev-dependencies]
 solana-sdk = "2.1.0"

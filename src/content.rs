@@ -121,7 +121,7 @@ pinocchio_pubkey::declare_id!("YourProgramIdHere");
     pub fn errors_rs() -> &'static str {
         r#"use pinocchio::program_error::ProgramError;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, shank::ShankType)]
 pub enum MyProgramError {
     InvalidInstructionData,
     PdaMismatch,
