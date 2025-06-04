@@ -1,7 +1,6 @@
 pub mod templates {
 
     //lib.rs
-
     pub fn lib_rs(address: &str) -> String {
         format!(
             r#"#![no_std]
@@ -337,7 +336,7 @@ pub unsafe fn to_mut_bytes<T: DataLen>(data: &mut T) -> &mut [u8] {
     }
 
     pub mod unit_tests {
-        pub fn unit_test_rs(address: &str) -> String {
+        pub fn unit_test_rs(address: &str, program_address: &str, project_name: &str) -> String {
             let template = r#"
 use mollusk_svm::result::{Check, ProgramResult};
 use mollusk_svm::{program, Mollusk};
@@ -349,20 +348,20 @@ use solana_sdk::pubkey::Pubkey;
 extern crate alloc;
 use alloc::vec;
 
-use solana_pinocchio_starter::instruction::Initialize;
-use solana_pinocchio_starter::state::{to_bytes, DataLen, MyState};
-use solana_pinocchio_starter::ID;
+use {project_name}::instruction::Initialize;
+use {project_name}::state::{to_bytes, DataLen, MyState};
+use {project_name}::ID;
 use solana_sdk::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+pub const PROGRAM: Pubkey = pubkey!("{program_address}");
 
 pub const RENT: Pubkey = pubkey!("SysvarRent111111111111111111111111111111111");
 
 pub const PAYER: Pubkey = pubkey!("{address}");
 
 pub fn mollusk() -> Mollusk {
-    let mollusk = Mollusk::new(&PROGRAM, "target/deploy/solana_pinocchio_starter");
+    let mollusk = Mollusk::new(&PROGRAM, "target/deploy/{project_name}");
     mollusk
 }
 
@@ -427,9 +426,13 @@ fn test_initialize_mystate() {
 
     assert!(init_res.program_result == ProgramResult::Success);
 }
-            "#;
+        "#;
 
-            template.replace("{address}", address)
+            template
+                .replace("{address}", address)
+                .replace("{program_address}", program_address)
+                .replace("{project_name}", project_name)
         }
     }
 }
+
