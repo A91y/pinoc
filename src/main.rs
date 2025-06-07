@@ -318,7 +318,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-pinocchio = "0.8.1"
+pinocchio = "=0.8.4"
 pinocchio-log = "0.4.0"
 pinocchio-pubkey = "0.2.4"
 pinocchio-system = "0.2.3"
@@ -326,10 +326,10 @@ pinocchio-token = "0.3.0"
 shank = "0.4.2"
 
 [dev-dependencies]
-solana-sdk = "2.1.0"
-mollusk-svm = "0.1.4"
+solana-sdk = "=2.2.1"
+mollusk-svm = "=0.1.3"
 spl-token = "8.0.0"
-mollusk-svm-bencher = "0.1.4"
+mollusk-svm-bencher = "=0.1.3"
 
 [features]
 no-entrypoint = []

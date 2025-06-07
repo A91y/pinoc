@@ -347,8 +347,8 @@ use solana_sdk::pubkey::Pubkey;
 extern crate alloc;
 use alloc::vec;
 
-use {project_name}::instruction::Initialize;
-use {project_name}::state::{to_bytes, DataLen, MyState};
+use {project_name}::instructions::Initialize;
+use {project_name}::states::{to_bytes, DataLen, MyState};
 use {project_name}::ID;
 use solana_sdk::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
