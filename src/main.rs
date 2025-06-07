@@ -335,7 +335,6 @@ mollusk-svm-bencher = "=0.1.3"
 no-entrypoint = []
 std = []
 test-default = ["no-entrypoint", "std"]
-bench-default = ["no-entrypoint", "std"]
 
 [[test]]
 name = "unit_tests""#,
