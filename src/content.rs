@@ -337,8 +337,7 @@ pub unsafe fn to_mut_bytes<T: DataLen>(data: &mut T) -> &mut [u8] {
 
     pub mod unit_tests {
         pub fn unit_test_rs(address: &str, program_address: &str, project_name: &str) -> String {
-            let template = r#"
-use mollusk_svm::result::{Check, ProgramResult};
+            let template = r#"use mollusk_svm::result::{Check, ProgramResult};
 use mollusk_svm::{program, Mollusk};
 use solana_sdk::account::Account;
 use solana_sdk::instruction::{AccountMeta, Instruction};

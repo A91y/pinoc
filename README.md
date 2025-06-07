@@ -1,6 +1,6 @@
 <div align="center">
   <img src="assets/logo.png" alt="Chio CLI Logo" width="20%">
-  <h1>Chio CLI</h1>
+  <h1>Chio</h1>
   <p>Setup Solana Pinocchio projects blazingly fast</p>
 </div>
 
