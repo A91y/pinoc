@@ -58,9 +58,6 @@ chio test
 # Deploy your program
 chio deploy
 
-# Run benchmarks
-chio bench
-
 # Get help
 chio --help
 ```
@@ -82,8 +79,6 @@ chio build
 # Run tests
 chio test
 
-# Run benchmarks
-chio bench
 ```
 
 
@@ -107,33 +102,9 @@ my-project/
 │       ├── mod.rs
 │       └── utils.rs
 └── tests/                   # Test files
-    └── unit_tests.rs
+    └── tests.rs
 ```
 
-## Development Roadmap
-
-### Completed ✅
-- Generate proper project structure
-- Pass user address to testcase file
-- Create a comprehensive README template
-- Implement `chio build` command
-
-### In Progress 🚧
-- [] Implement remaining command wrappers:
-  - `chio test` → `cargo test --features test-default`
-  - `chio deploy` → `solana program deploy ./target/debug/<project_name>.so`
-  - `chio bench` → `cargo bench --features bench-default`
-- Update banner and styling
-- Fix the imports in `unit_tests.rs`
-- Create keypair program when initialize
-- experimenting IDL generation : https://github.com/metaplex-foundation/solita
-
-### Planned 📋
-- Reduced the boiler plate code
-- Add template options (for token programs)
-- Improve error handling
-- Add configuration options
-- proper gitbook for the project
 
 ## Contributing
 
@@ -152,8 +123,8 @@ Contributions are welcome! Here's how you can contribute:
 1. Ensure you have Rust and Cargo installed
 2. Install Solana CLI tools
 3. Clone the repository
-4. Build with `cargo build`
-5. Run with `cargo run -- <command>`
+4. Build with `cargo build --release`
+5. To install too `cargo install --path .`
 
 ## License
 

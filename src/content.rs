@@ -59,31 +59,30 @@ fn process_instruction(
     // Configuration files
     pub fn readme_md() -> &'static str {
         r#"# Chio Pinocchio Project
-A project created with the Chio CLI tool.
 
-## Getting Started
+A Solana program built with the Chio CLI tool.
 
-### 1. Project Structure
+## Project Structure
 
-- **`src/`** - Source code folder
-  - **`entrypoint.rs`** - Program entry point
-    - Uses `nostd_panic_handler` for panic handling
-    - Disables global allocator (no heap allocations)
-  - **`lib.rs`** - Library crate
-    - Uses `no_std` for performance optimization
-  - **`instructions/`** - Contains all program instructions
-  - **`states/`** - Contains all account state definitions
-    - **`utils.rs`** - Helper functions for state management
-      - Provides serialization/deserialization helpers (`load_acc`, `load_mut_acc`, etc.)
-  - **`errors.rs`** - Program error definitions
+```
+src/
+├── entrypoint.rs          # Program entry point with nostd_panic_handler
+├── lib.rs                 # Library crate (no_std optimization)
+├── instructions/          # Program instruction handlers  
+├── states/                # Account state definitions
+│   └── utils.rs           # State management helpers (load_acc, load_mut_acc)
+└── errors.rs              # Program error definitions
 
-- **`tests/`** - Test files
-  - Uses `mollusk-svm` - A lightweight Solana testing framework
-  - **`unit_tests.rs`** - Unit tests for the program
+tests/
+└── tests.rs               # Unit tests using mollusk-svm framework
+```
 
-### 2. Common Commands
+## Commands
 
 ```bash
+# Initialize project
+chio init <project-name>
+
 # Build the program
 chio build
 
@@ -93,23 +92,13 @@ chio test
 # Deploy the program
 chio deploy
 
-# Get help information
+# Get help
 chio help
 ```
 
-### 3. After Building
+---
 
-After a successful build, get the program public key:
-
-```bash
-solana address -k target/deploy/<YOUR_PROJECT_NAME>-keypair.json
-```
-
-Then replace the ID in your code:
-```rust
-pinocchio_pubkey::declare_id!("YourProgramIdHere");
-```
-"#
+**Author of Chio CLI**: [4rjunc](https://github.com/4rjunc) | [Twitter](https://x.com/4rjunc)"#
     }
 
     pub fn gitignore() -> &'static str {
