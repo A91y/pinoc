@@ -300,7 +300,7 @@ fn create_project_structure(
         .unwrap_or("project");
 
     fs::write(
-        test_dir.join("unit_tests.rs"),
+        test_dir.join("tests.rs"),
         templates::unit_tests::unit_test_rs(test_address, &program_address, project_name),
     )?;
 
@@ -322,23 +322,19 @@ pinocchio = "=0.8.1"
 pinocchio-log = "0.4.0"
 pinocchio-pubkey = "0.2.4"
 pinocchio-system = "0.2.3"
-pinocchio-token = "0.3.0"
 shank = "0.4.2"
 
 [dev-dependencies]
 solana-sdk = "2.1.0"
 mollusk-svm = "0.1.4"
-spl-token = "8.0.0"
-mollusk-svm-bencher = "0.1.4"
-
+agave-feature-set = "=2.2.7"
+agave-precompiles = "=2.2.7"
 
 [features]
 no-entrypoint = []
 std = []
 test-default = ["no-entrypoint", "std"]
-
-[[test]]
-name = "unit_tests""#,
+"#,
         project_name
     );
 
