@@ -146,7 +146,7 @@ fn init_project(project_name: &str) -> Result<()> {
         "🧑🏻‍🍳 Initializing your pinocchio project: {}",
         project_name
     );
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"); // Create the project directory
+    println!(""); // Create the project directory
     let project_dir = Path::new(project_name);
     fs::create_dir_all(project_dir)
         .with_context(|| format!("Failed to create project directory: {}", project_name))?;
@@ -225,17 +225,17 @@ fn init_project(project_name: &str) -> Result<()> {
     create_project_structure(project_dir, user_address, program_address.clone())?;
     update_cargo_toml(project_dir, project_name)?;
 
-    println!("\x1b[38;2;230;230;230m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m");
+    println!("");
     println!(
-        "\x1b[38;2;255;175;193m✅ Pinocchio Project '{}' initialized successfully!\x1b[0m",
+        "✅ Pinocchio Project '{}' initialized successfully!",
         project_name
     );
-    println!("\n\x1b[38;2;255;175;193m📋 Next steps:\x1b[0m");
-    println!("\x1b[38;2;255;175;193m$ cd {}\x1b[0m", project_name);
-    println!("\x1b[38;2;255;175;193m$ chio build\x1b[0m");
-    println!("\x1b[38;2;255;175;193m$ chio test\x1b[0m");
-    println!("\x1b[38;2;255;175;193m$ chio deploy\x1b[0m");
-    println!("\x1b[38;2;230;230;230m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m");
+    println!("\n📋 Next steps:");
+    println!("$ cd {}", project_name);
+    println!("$ chio build");
+    println!("$ chio test");
+    println!("$ chio deploy");
+    println!("");
 
     Ok(())
 }
