@@ -126,6 +126,3 @@ Contributions are welcome! Here's how you can contribute:
 4. Build with `cargo build --release`
 5. To install too `cargo install --path .`
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.

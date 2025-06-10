@@ -110,7 +110,6 @@ fn main() -> Result<()> {
 
 fn display_help_banner() -> Result<()> {
     // banner
-    println!("\x1b[38;2;255;175;193m");
     println!(
         r#"
       *     *       
@@ -120,7 +119,6 @@ fn display_help_banner() -> Result<()> {
  \___|_| |_|_|\___/ 
  "#
     );
-    println!("\x1b[0m");
 
     println!("👾 Setup your pinocchio project blazingly fast💨");
 
@@ -130,13 +128,10 @@ fn display_help_banner() -> Result<()> {
     println!("   chio test                - Run project tests");
     println!("   chio deploy              - Deploy the project");
 
-    println!("\x1b[38;2;230;230;230m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m");
-
     Ok(())
 }
 
 fn init_project(project_name: &str) -> Result<()> {
-    println!("\x1b[38;2;255;175;193m"); // Custom RGB color for light pink (similar to the rabbit's ear)
     println!(
         r#"
       *     *       
@@ -147,12 +142,11 @@ fn init_project(project_name: &str) -> Result<()> {
                     
  "#
     );
-    println!("\x1b[0m");
     println!(
-        "\x1b[38;2;255;175;193m🧑🏻‍🍳 Initializing your pinocchio project: {}\x1b[0m",
+        "🧑🏻‍🍳 Initializing your pinocchio project: {}",
         project_name
     );
-    println!("\x1b[38;2;230;230;230m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m"); // Create the project directory
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"); // Create the project directory
     let project_dir = Path::new(project_name);
     fs::create_dir_all(project_dir)
         .with_context(|| format!("Failed to create project directory: {}", project_name))?;
