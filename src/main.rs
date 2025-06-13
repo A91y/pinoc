@@ -132,6 +132,15 @@ fn display_help_banner() -> Result<()> {
 }
 
 fn init_project(project_name: &str) -> Result<()> {
+    // Validate project name - only allow alphanumeric characters and underscores
+    if !is_valid_project_name(project_name) {
+        anyhow::bail!(
+            "Invalid project name '{}'. Project names can only contain letters, numbers, and underscores (_). \
+            Hyphens (-) and other special characters are not allowed.",
+            project_name
+        );
+    }
+
     println!(
         r#"
       *     *       
@@ -238,6 +247,17 @@ fn init_project(project_name: &str) -> Result<()> {
     println!("");
 
     Ok(())
+}
+
+/// Validates that the project name only contains alphanumeric characters and underscores
+fn is_valid_project_name(name: &str) -> bool {
+    // Check if name is empty
+    if name.is_empty() {
+        return false;
+    }
+
+    // Check if all characters are alphanumeric or underscore
+    name.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 
 fn create_project_structure(
