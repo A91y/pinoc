@@ -269,7 +269,7 @@ fn create_project_structure(
     )?;
     fs::write(
         instructions_dir.join("initialize.rs"),
-        templates::instructions::initilaize(),
+        templates::instructions::initialize(),
     )?;
 
     let states_dir = src_dir.join("states");

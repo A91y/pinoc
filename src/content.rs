@@ -49,8 +49,8 @@ fn process_instruction(
 
     match ProgramInstruction::try_from(ix_disc)? {
         ProgramInstruction::InitializeState => {
-            msg!("Initilaize");
-            instructions::initilaize(accounts, instruction_data)
+            msg!("initialize");
+            instructions::initialize(accounts, instruction_data)
         }
     }
 }"#
@@ -125,7 +125,7 @@ impl From<MyProgramError> for ProgramError {
     }
 
     pub mod instructions {
-        pub fn initilaize() -> &'static str {
+        pub fn initialize() -> &'static str {
             r#"use pinocchio::{
     account_info::AccountInfo,
     instruction::{Seed, Signer},
@@ -156,7 +156,7 @@ impl DataLen for Initialize {
     const LEN: usize = core::mem::size_of::<Initialize>();
 }
 
-pub fn initilaize(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
+pub fn initialize(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
     let [payer_acc, state_acc, sysvar_rent_acc, _system_program] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
@@ -337,8 +337,7 @@ extern crate alloc;
 use alloc::vec;
 
 use {project_name}::instructions::Initialize;
-use {project_name}::states::{to_bytes, DataLen, MyState};
-use {project_name}::ID;
+use {project_name}::states::{to_bytes, MyState};
 use solana_sdk::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
 
