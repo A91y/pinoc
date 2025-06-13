@@ -213,7 +213,6 @@ fn init_project(project_name: &str) -> Result<()> {
         anyhow::bail!("Failed to get program address from keypair: {}", error);
     }
 
-    // get user's wallet address
     let user_address_output = Command::new("solana")
         .arg("address")
         .current_dir(project_dir)
@@ -234,6 +233,8 @@ fn init_project(project_name: &str) -> Result<()> {
     create_project_structure(project_dir, user_address, program_address.clone())?;
     update_cargo_toml(project_dir, project_name)?;
 
+    init_git_repo(project_dir, project_name)?;
+
     println!("");
     println!(
         "✅ Pinocchio Project '{}' initialized successfully!",
@@ -249,15 +250,62 @@ fn init_project(project_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Validates that the project name only contains alphanumeric characters and underscores
+/// validates that the project name only contains alphanumeric characters and underscores
 fn is_valid_project_name(name: &str) -> bool {
-    // Check if name is empty
     if name.is_empty() {
         return false;
     }
 
-    // Check if all characters are alphanumeric or underscore
     name.chars().all(|c| c.is_alphanumeric() || c == '_')
+}
+
+fn init_git_repo(project_dir: &Path, project_name: &str) -> Result<()> {
+    let git_init_output = Command::new("git")
+        .arg("init")
+        .current_dir(project_dir)
+        .output()
+        .with_context(|| "Failed to initialize git repository")?;
+
+    if !git_init_output.status.success() {
+        let error = String::from_utf8_lossy(&git_init_output.stderr);
+        println!("Warning: Failed to initialize git repository: {}", error);
+        return Ok(());
+    }
+
+    let git_add_output = Command::new("git")
+        .arg("add")
+        .arg(".")
+        .current_dir(project_dir)
+        .output()
+        .with_context(|| "Failed to add files to git")?;
+
+    if !git_add_output.status.success() {
+        let error = String::from_utf8_lossy(&git_add_output.stderr);
+        println!("Warning: Failed to add files to git: {}", error);
+        return Ok(());
+    }
+
+    let commit_message = format!("Initial commit: Setup Pinocchio project '{}'", project_name);
+    let git_commit_output = Command::new("git")
+        .arg("commit")
+        .arg("-m")
+        .arg(&commit_message)
+        .current_dir(project_dir)
+        .output()
+        .with_context(|| "Failed to make initial commit")?;
+
+    if !git_commit_output.status.success() {
+        let error = String::from_utf8_lossy(&git_commit_output.stderr);
+        println!("Warning: Failed to make initial commit: {}", error);
+        // Check if it's because of missing git config
+        if error.contains("user.email") || error.contains("user.name") {
+            println!("Hint: Set your git config with:");
+            println!("  git config --global user.email \"you@example.com\"");
+            println!("  git config --global user.name \"Your Name\"");
+        }
+        return Ok(());
+    }
+    Ok(())
 }
 
 fn create_project_structure(
