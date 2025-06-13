@@ -80,9 +80,6 @@ tests/
 ## Commands
 
 ```bash
-# Initialize project
-chio init <project-name>
-
 # Build the program
 chio build
 
