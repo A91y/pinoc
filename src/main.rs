@@ -23,6 +23,12 @@ enum Commands {
     Build,
     Test,
     Deploy,
+    Add {
+        package_name: String,
+    },
+    Search {
+        query: Option<String>,
+    },
     #[command(name = "--help")]
     Help,
 }
@@ -100,6 +106,12 @@ fn main() -> Result<()> {
                 println!("Program deployed successfully!");
             }
         }
+        Commands::Add { package_name } => {
+            add_package(package_name)?;
+        }
+        Commands::Search { query } => {
+            search_packages(query.as_deref())?;
+        }
         Commands::Help => {
             display_help_banner()?;
         }
@@ -127,6 +139,8 @@ fn display_help_banner() -> Result<()> {
     println!("   chio build               - Build the project");
     println!("   chio test                - Run project tests");
     println!("   chio deploy              - Deploy the project");
+    println!("   chio add <package_name>  - Add a package to the project");
+    println!("   chio search [query]      - Search for pinocchio packages on crates.io");
 
     Ok(())
 }
@@ -151,10 +165,7 @@ fn init_project(project_name: &str) -> Result<()> {
                     
  "#
     );
-    println!(
-        "🧑🏻‍🍳 Initializing your pinocchio project: {}",
-        project_name
-    );
+    println!("🧑🏻‍🍳 Initializing your pinocchio project: {}", project_name);
     println!(""); // Create the project directory
     let project_dir = Path::new(project_name);
     fs::create_dir_all(project_dir)
@@ -402,4 +413,118 @@ test-default = ["no-entrypoint", "std"]
     fs::write(project_dir.join("Cargo.toml"), cargo_toml)?;
 
     Ok(())
+}
+
+fn add_package(package_name: &str) -> Result<()> {
+    // Check if Cargo.toml exists
+    let cargo_toml_path = Path::new("Cargo.toml");
+    if !cargo_toml_path.exists() {
+        anyhow::bail!(
+            "Cargo.toml not found. Please run this command from the project root directory."
+        );
+    }
+
+    // Add the package using cargo add
+    println!("📦 Adding package: {}", package_name);
+    let status = Command::new("cargo")
+        .arg("add")
+        .arg(package_name)
+        .spawn()?
+        .wait()
+        .with_context(|| format!("Failed to add package: {}", package_name))?;
+
+    if !status.success() {
+        anyhow::bail!(
+            "Failed to add package '{}' with exit code: {:?}",
+            package_name,
+            status.code()
+        );
+    } else {
+        println!("✅ Package '{}' added successfully!", package_name);
+    }
+
+    Ok(())
+}
+
+fn search_packages(query: Option<&str>) -> Result<()> {
+    let search_term = match query {
+        Some(q) => format!("pinocchio {}", q),
+        None => "pinocchio".to_string(),
+    };
+
+    println!("🔍 Searching for packages matching '{}'...\n", search_term);
+
+    // Run cargo search
+    let output = Command::new("cargo")
+        .arg("search")
+        .arg(&search_term)
+        .arg("--limit")
+        .arg("20")
+        .output()
+        .with_context(|| "Failed to run 'cargo search'. Make sure cargo is installed.")?;
+
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("cargo search failed: {}", error);
+    }
+
+    let search_results = String::from_utf8_lossy(&output.stdout);
+    let packages = parse_cargo_search_output(&search_results)?;
+
+    if packages.is_empty() {
+        println!("No packages found matching '{}'.", search_term);
+        println!("💡 Try a different search term or check https://crates.io for more packages.");
+        return Ok(());
+    }
+
+    println!("📦 Found {} package(s):\n", packages.len());
+
+    for package in packages {
+        println!("🔹 {}", package.name);
+        println!("   Description: {}", package.description);
+        println!("   Version: {}", package.version);
+        println!("   Install: chio add {}", package.name);
+        println!();
+    }
+
+    Ok(())
+}
+
+#[derive(Debug)]
+struct SearchResult {
+    name: String,
+    description: String,
+    version: String,
+}
+
+fn parse_cargo_search_output(output: &str) -> Result<Vec<SearchResult>> {
+    let mut packages = Vec::new();
+
+    for line in output.lines() {
+        if line.trim().is_empty() || line.starts_with("...") {
+            continue;
+        }
+
+        if let Some(equals_pos) = line.find(" = ") {
+            let name = line[..equals_pos].trim().to_string();
+            let rest = &line[equals_pos + 3..];
+
+            if let Some(quote_end) = rest[1..].find('"') {
+                let version = rest[1..quote_end + 1].to_string();
+                let description = if let Some(hash_pos) = rest.find(" # ") {
+                    rest[hash_pos + 3..].trim().to_string()
+                } else {
+                    "No description available".to_string()
+                };
+
+                packages.push(SearchResult {
+                    name,
+                    description,
+                    version,
+                });
+            }
+        }
+    }
+
+    Ok(packages)
 }
