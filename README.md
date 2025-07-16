@@ -1,12 +1,12 @@
+<div align="center"> <img src="assets/logo.png" alt="Pinoc CLI Logo" width="20%"> <h1>Pinoc</h1> <p>Setup Solana Pinocchio projects blazingly fast</p>
+Author:
 
-<div align="center"> <img src="assets/logo.png" alt="Chio CLI Logo" width="20%"> <h1>Chio</h1> <p>Setup Solana Pinocchio projects blazingly fast</p>
-Author: 
-
+<a class="header-badge" target="_blank" href="https://twitter.com/AyushAgr91"> <img alt="Twitter" src="https://img.shields.io/badge/@AyushAgr91-000000?style=for-the-badge&logo=x&logoColor=white"> </a>
 <a class="header-badge" target="_blank" href="https://twitter.com/4rjunc"> <img alt="Twitter" src="https://img.shields.io/badge/@4rjunc-000000?style=for-the-badge&logo=x&logoColor=white"> </a> </div>
 
 ## About
 
-Chio is a command-line tool designed to make it easy to set up and manage [Pinocchio](https://github.com/anza-xyz/pinocchio) projects on Solana. It automates common development tasks including project initialization, building, testing, and deployment with simple commands.
+Pinoc is a command-line tool designed to make it easy to set up and manage [Pinocchio](https://github.com/anza-xyz/pinocchio) projects on Solana. It automates common development tasks including project initialization, building, testing, and deployment with simple commands.
 
 ## Features
 
@@ -20,18 +20,20 @@ Chio is a command-line tool designed to make it easy to set up and manage [Pinoc
 ### From GitHub
 
 ```bash
-cargo install --git https://github.com/4rjunc/solana-chio --force
+cargo install --git https://github.com/a91y/pinoc --force
 ```
 
 ### From Source
 
 1. Clone the repository
+
    ```bash
-   git clone https://github.com/4rjunc/solana-chio.git
-   cd solana-chio
+   git clone https://github.com/a91y/pinoc.git
+   cd pinoc
    ```
 
 2. Build the tool
+
    ```bash
    cargo build --release
    ```
@@ -47,19 +49,19 @@ cargo install --git https://github.com/4rjunc/solana-chio --force
 
 ```bash
 # Initialize a new project
-chio init <project-name>
+pinoc init <project-name>
 
 # Build your project
-chio build
+pinoc build
 
 # Run tests
-chio test
+pinoc test
 
 # Deploy your program
-chio deploy
+pinoc deploy
 
 # Get help
-chio --help
+pinoc --help
 ```
 
 ### Example
@@ -68,24 +70,22 @@ Create a new Pinocchio project and get started:
 
 ```bash
 # Create a new project
-chio init my-pinocchio-app
+pinoc init my-pinocchio-app
 
 # Navigate to your project
 cd my-pinocchio-app
 
 # Build your project
-chio build
+pinoc build
 
 # Run tests
-chio test
+pinoc test
 
 ```
 
-
-
 ## Project Structure
 
-When you initialize a project with `chio init`, it creates the following structure:
+When you initialize a project with `pinoc init`, it creates the following structure:
 
 ```
 my-project/
@@ -104,7 +104,6 @@ my-project/
 └── tests/                   # Test files
     └── tests.rs
 ```
-
 
 ## Contributing
 
@@ -125,4 +124,3 @@ Contributions are welcome! Here's how you can contribute:
 3. Clone the repository
 4. Build with `cargo build --release`
 5. To install too `cargo install --path .`
-

@@ -73,7 +73,7 @@ fn main() -> Result<()> {
 
             let target_deploy_dir = Path::new("target/deploy");
             if !target_deploy_dir.exists() {
-                anyhow::bail!("target/deploy directory not found. Please run 'chio build' first.");
+                anyhow::bail!("target/deploy directory not found. Please run 'pinoc build' first.");
             }
 
             let mut so_file = None;
@@ -88,7 +88,7 @@ fn main() -> Result<()> {
 
             let so_path = so_file.ok_or_else(|| {
                 anyhow::anyhow!(
-                    "No .so file found in target/deploy. Please run 'chio build' first."
+                    "No .so file found in target/deploy. Please run 'pinoc build' first."
                 )
             })?;
 
@@ -124,23 +124,24 @@ fn display_help_banner() -> Result<()> {
     // banner
     println!(
         r#"
-      *     *       
-  ___| |__ (_) ___  
- / __| '_ \| |/ _ \ 
-| (__| | | | | (_) |
- \___|_| |_|_|\___/ 
+       _                   
+ _ __ (_)_ __   ___   ___  
+| '_ \| | '_ \ / _ \ / __| 
+| |_) | | | | | (_) | (__  
+| .__/|_|_| |_|\___/ \___| 
+|_|                       
  "#
     );
 
     println!("👾 Setup your pinocchio project blazingly fast💨");
 
     println!("\n🏗️ AVAILABLE COMMANDS:");
-    println!("   chio init <project_name> - Initialize a new Pinocchio project");
-    println!("   chio build               - Build the project");
-    println!("   chio test                - Run project tests");
-    println!("   chio deploy              - Deploy the project");
-    println!("   chio add <package_name>  - Add a package to the project");
-    println!("   chio search [query]      - Search for pinocchio packages on crates.io");
+    println!("   pinoc init <project_name> - Initialize a new Pinocchio project");
+    println!("   pinoc build               - Build the project");
+    println!("   pinoc test                - Run project tests");
+    println!("   pinoc deploy              - Deploy the project");
+    println!("   pinoc add <package_name>  - Add a package to the project");
+    println!("   pinoc search [query]      - Search for pinocchio packages on crates.io");
 
     Ok(())
 }
@@ -157,12 +158,12 @@ fn init_project(project_name: &str) -> Result<()> {
 
     println!(
         r#"
-      *     *       
-  ___| |__ (_) ___  
- / __| '_ \| |/ _ \ 
-| (__| | | | | (_) |
- \___|_| |_|_|\___/ 
-                    
+       _                   
+ _ __ (_)_ __   ___   ___  
+| '_ \| | '_ \ / _ \ / __| 
+| |_) | | | | | (_) | (__  
+| .__/|_|_| |_|\___/ \___| 
+|_|                       
  "#
     );
     println!("🧑🏻‍🍳 Initializing your pinocchio project: {}", project_name);
@@ -253,9 +254,9 @@ fn init_project(project_name: &str) -> Result<()> {
     );
     println!("\n📋 Next steps:");
     println!("$ cd {}", project_name);
-    println!("$ chio build");
-    println!("$ chio test");
-    println!("$ chio deploy");
+    println!("$ pinoc build");
+    println!("$ pinoc test");
+    println!("$ pinoc deploy");
     println!("");
 
     Ok(())
@@ -483,7 +484,7 @@ fn search_packages(query: Option<&str>) -> Result<()> {
         println!("🔹 {}", package.name);
         println!("   Description: {}", package.description);
         println!("   Version: {}", package.version);
-        println!("   Install: chio add {}", package.name);
+        println!("   Install: pinoc add {}", package.name);
         println!();
     }
 

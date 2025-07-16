@@ -58,9 +58,9 @@ fn process_instruction(
 
     // Configuration files
     pub fn readme_md() -> &'static str {
-        r#"# Chio Pinocchio Project
+        r#"# Pinoc Pinocchio Project
 
-A Solana program built with the Chio CLI tool.
+A Solana program built with the Pinoc CLI tool.
 
 ## Project Structure
 
@@ -81,21 +81,21 @@ tests/
 
 ```bash
 # Build the program
-chio build
+pinoc build
 
 # Run tests
-chio test
+pinoc test
 
 # Deploy the program
-chio deploy
+pinoc deploy
 
 # Get help
-chio help
+pinoc help
 ```
 
 ---
 
-**Author of Chio CLI**: [4rjunc](https://github.com/4rjunc) | [Twitter](https://x.com/4rjunc)"#
+**Author of Pinoc CLI**: [4rjunc](https://github.com/4rjunc) | [Twitter](https://x.com/4rjunc)"#
     }
 
     pub fn gitignore() -> &'static str {
