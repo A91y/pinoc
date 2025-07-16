@@ -23,6 +23,7 @@ enum Commands {
     Build,
     Test,
     Deploy,
+    Clean,
     Add {
         package_name: String,
     },
@@ -106,6 +107,9 @@ fn main() -> Result<()> {
                 println!("Program deployed successfully!");
             }
         }
+        Commands::Clean => {
+            clean_project()?;
+        }
         Commands::Add { package_name } => {
             add_package(package_name)?;
         }
@@ -140,6 +144,7 @@ fn display_help_banner() -> Result<()> {
     println!("   pinoc build               - Build the project");
     println!("   pinoc test                - Run project tests");
     println!("   pinoc deploy              - Deploy the project");
+    println!("   pinoc clean               - Clean target directory (preserves keypairs)");
     println!("   pinoc add <package_name>  - Add a package to the project");
     println!("   pinoc search [query]      - Search for pinocchio packages on crates.io");
 
@@ -528,4 +533,54 @@ fn parse_cargo_search_output(output: &str) -> Result<Vec<SearchResult>> {
     }
 
     Ok(packages)
+}
+
+fn clean_project() -> Result<()> {
+    println!("🧹 Cleaning project...");
+
+    let target_dir = Path::new("target");
+    if !target_dir.exists() {
+        println!("✅ No target directory found. Nothing to clean.");
+        return Ok(());
+    }
+
+    let deploy_dir = target_dir.join("deploy");
+    let mut preserved_keypairs = Vec::new();
+
+    if deploy_dir.exists() {
+        for entry in fs::read_dir(&deploy_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if let Some(file_name) = path.file_name() {
+                if let Some(name_str) = file_name.to_str() {
+                    if name_str.ends_with("-keypair.json") {
+                        let keypair_name = name_str.to_string();
+                        let keypair_content = fs::read(&path)
+                            .with_context(|| format!("Failed to read keypair: {}", name_str))?;
+                        preserved_keypairs.push((keypair_name, keypair_content));
+                        println!("🔐 Preserving keypair: {}", name_str);
+                    }
+                }
+            }
+        }
+    }
+
+    fs::remove_dir_all(target_dir).with_context(|| "Failed to remove target directory")?;
+
+    fs::create_dir_all(&deploy_dir)
+        .with_context(|| "Failed to recreate target/deploy directory")?;
+
+    let keypair_count = preserved_keypairs.len();
+    for (keypair_name, keypair_content) in preserved_keypairs {
+        let new_path = deploy_dir.join(&keypair_name);
+        fs::write(&new_path, keypair_content)
+            .with_context(|| format!("Failed to restore keypair: {}", keypair_name))?;
+    }
+
+    println!("✅ Project cleaned successfully!");
+    if keypair_count > 0 {
+        println!("🔐 Preserved {} keypair file(s)", keypair_count);
+    }
+
+    Ok(())
 }
