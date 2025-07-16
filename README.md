@@ -17,6 +17,12 @@ Pinoc is a command-line tool designed to make it easy to set up and manage [Pino
 
 ## Installation
 
+### From crates.io (Recommended)
+
+```bash
+cargo install pinoc
+```
+
 ### From GitHub
 
 ```bash
