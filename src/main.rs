@@ -24,7 +24,7 @@ enum Commands {
     Test,
     Deploy,
     Clean {
-        #[arg(long)]
+        #[arg(long, help = "Remove all files including keypair files")]
         no_preserve: bool,
     },
     Add {
