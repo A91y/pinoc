@@ -7,7 +7,7 @@ description = "A CLI tool for setting up pinocchio program project"
 repository = "https://github.com/a91y/pinoc"
 license = "MIT"
 readme = "README.md"
-keywords = ["cli", "scaffold", "template", "project", "generator", "solana", "pinocchio"]
+keywords = ["cli", "scaffold", "template", "solana", "pinocchio"]
 categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
