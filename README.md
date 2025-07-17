@@ -1,13 +1,14 @@
 <div align="center">
   <img src="assets/logo.png" alt="Pinoc CLI Logo" width="20%">
   <h1>Pinoc</h1>
-  <p>Setup Solana Pinocchio projects blazingly fast</p>
+  <p><strong>Setup Solana Pinocchio projects blazingly fast ⚡</strong></p>
 
-  [![Crates.io](https://img.shields.io/crates/v/pinoc)](https://crates.io/crates/pinoc)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-  [![Rust](https://img.shields.io/badge/rust-1.70+-blue.svg)](https://www.rust-lang.org)
+[![Crates.io](https://img.shields.io/crates/v/pinoc)](https://crates.io/crates/pinoc)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-yellow.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Rust](https://img.shields.io/badge/rust-1.70+-blue.svg)](https://www.rust-lang.org)
+[![Downloads](https://img.shields.io/crates/d/pinoc)](https://crates.io/crates/pinoc)
 
-  **Authors:**
+**Built by:**
 
   <a class="header-badge" target="_blank" href="https://twitter.com/AyushAgr91">
     <img alt="Twitter" src="https://img.shields.io/badge/@AyushAgr91-000000?style=for-the-badge&logo=x&logoColor=white">
@@ -17,55 +18,63 @@
   </a>
 </div>
 
-## About
+---
 
-Pinoc is a command-line tool designed to make it easy to set up and manage [Pinocchio](https://github.com/anza-xyz/pinocchio) projects on Solana. It automates common development tasks including project initialization, building, testing, and deployment with simple commands.
+## 🚀 What is Pinoc?
 
-## Features
+A modern Rust CLI to bootstrap Solana [Pinocchio](https://github.com/anza-xyz/pinocchio) programs with built-in build, deploy, and testing tools.
 
-- 🚀 **Fast Project Scaffolding** - Create new projects with best practices in seconds
-- 📁 **Proper Directory Structure** - Solana/Pinocchio development structure out of the box
-- 🔨 **Simple Commands** - Build, test, and deploy with intuitive commands
-- 🧹 **Smart Project Cleaning** - Clean build artifacts while preserving keypairs
-- 📦 **Package Management** - Add dependencies and search for Pinocchio packages
-- 💻 **Comprehensive Testing** - Built-in testing environment with mollusk-svm
-- 🔐 **Automatic Keypair Management** - Generate and manage program keypairs
-- 🔑 **Program Key Sync** - Keep your program IDs consistent with smart checking
-- ⚙️ **Configuration Management** - Use Pinoc.toml for deployment settings
+### Why Pinoc?
 
-## Installation
+- **Zero Configuration**: Get started in seconds with sensible defaults
+- **Best Practices**: Project structure follows Solana development conventions
+- **Developer Experience**: Intuitive commands that feel natural
+- **Production Ready**: Built-in testing, deployment, and key management
 
-### From crates.io (Recommended)
+## ✨ Key Features
+
+- 🏗️ **Instant Project Scaffolding** - Create production-ready projects in seconds
+- 📁 **Optimized Structure** - Best-practice directory layout out of the box
+- 🔨 **Unified Commands** - Build, test, and deploy with simple commands
+- 🧹 **Smart Cleaning** - Clean build artifacts while preserving keypairs
+- 📦 **Package Discovery** - Find and add Pinocchio packages effortlessly
+- 🧪 **Built-in Testing** - Comprehensive testing with mollusk-svm
+- 🔐 **Keypair Management** - Automatic generation and secure storage
+- 🔑 **Program ID Sync** - Keep your program IDs consistent automatically
+- ⚙️ **Configuration Management** - Simple deployment configuration with Pinoc.toml
+
+## 📦 Installation
+
+### Quick Install (Recommended)
 
 ```bash
 cargo install pinoc
 ```
 
-### From GitHub
+### Alternative Methods
+
+<details>
+<summary>From GitHub (Latest)</summary>
 
 ```bash
 cargo install --git https://github.com/a91y/pinoc --force
 ```
 
-### From Source
+</details>
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/a91y/pinoc.git
-   cd pinoc
-   ```
+<details>
+<summary>From Source</summary>
 
-2. **Build the tool**
-   ```bash
-   cargo build --release
-   ```
+```bash
+git clone https://github.com/a91y/pinoc.git
+cd pinoc
+cargo build --release
+cargo install --path .
+```
 
-3. **Install globally**
-   ```bash
-   cargo install --path .
-   ```
+</details>
 
-## Quick Start
+## 🎯 Quick Start
 
 ```bash
 # Install pinoc
@@ -83,329 +92,174 @@ pinoc test
 
 # Deploy to Solana
 pinoc deploy
-
-# Create a new project without git initialization
-pinoc init my_awesome_app --no-git
-# This will skip git repository initialization.
 ```
 
-## Usage
+That's it! You now have a fully functional Solana program ready for development.
 
-### Available Commands
+## 📋 Command Reference
 
-| Command | Description |
-|---------|-------------|
-| `pinoc init <project-name> [--no-git] [--no-boilerplate]` | Initialize a new Pinocchio project (skip git init with --no-git, minimal structure with --no-boilerplate) |
-| `pinoc build` | Build your Solana program |
-| `pinoc test` | Run project tests |
-| `pinoc deploy [--cluster] [--wallet]` | Deploy your program to Solana (uses Pinoc.toml config, optional overrides) |
-| `pinoc clean [--no-preserve]` | Clean target directory (preserves keypairs by default) |
-| `pinoc add <package-name>` | Add a package to your project |
-| `pinoc search [query]` | Search for Pinocchio packages |
-| `pinoc keys list` | List all program keypairs |
-| `pinoc keys sync` | Sync program ID in lib.rs with keypair |
-| `pinoc --help` | Get help and see all available commands |
-| `pinoc help` | Display custom help banner with all commands |
+| Command                | Description           | Example                         |
+| ---------------------- | --------------------- | ------------------------------- |
+| `pinoc init <name>`    | Create a new project  | `pinoc init my_app`             |
+| `pinoc build`          | Build your program    | `pinoc build`                   |
+| `pinoc test`           | Run tests             | `pinoc test`                    |
+| `pinoc deploy`         | Deploy to Solana      | `pinoc deploy --cluster devnet` |
+| `pinoc clean`          | Clean build artifacts | `pinoc clean`                   |
+| `pinoc add <package>`  | Add a package         | `pinoc add some_package`        |
+| `pinoc search [query]` | Search packages       | `pinoc search database`         |
+| `pinoc keys list`      | List program keypairs | `pinoc keys list`               |
+| `pinoc keys sync`      | Sync program IDs      | `pinoc keys sync`               |
+| `pinoc help`           | Show help             | `pinoc help`                    |
 
-### Complete Workflow Example
+### Command Options
 
-```bash
-# Create a new project
-pinoc init my_pinocchio_app
+- `pinoc init <name> --no-git` - Skip git initialization
+- `pinoc init <name> --no-boilerplate` - Create minimal project structure
+- `pinoc clean --no-preserve` - Clean everything including keypairs
+- `pinoc deploy --cluster <cluster> --wallet <path>` - Override deployment settings
 
-# Create a new project without git initialization
-pinoc init my_pinocchio_app --no-git
+## 📂 Project Structure
 
-# Create a minimal project without tests and boilerplate
-pinoc init my_minimal_project --no-boilerplate
-
-# Navigate to your project
-cd my_pinocchio_app
-
-# Build your project
-pinoc build
-
-# Run tests
-pinoc test
-
-# List program keys
-pinoc keys list
-
-# Sync program keys (checks consistency first)
-pinoc keys sync
-
-# Clean build artifacts (preserves keypairs)
-pinoc clean
-
-# Add a package
-pinoc add some_package
-
-# Search for packages
-pinoc search database
-
-# Get help
-pinoc help
-
-# Deploy your program
-pinoc deploy
-
-# Deploy with custom cluster and wallet
-pinoc deploy --cluster devnet --wallet ./custom-keypair.json
-```
-
-## Project Structure
-
-When you initialize a project with `pinoc init`, it creates the following structure:
+### Standard Project
 
 ```
 my_project/
-├── Cargo.toml              # Project configuration with Pinocchio dependencies
-├── README.md               # Project documentation
-├── .gitignore              # Git ignore file
+├── Cargo.toml              # Project configuration
+├── README.md               # Documentation
+├── .gitignore              # Git ignore rules
 ├── Pinoc.toml              # Deployment configuration
 ├── src/
-│   ├── lib.rs              # Library crate using no_std
+│   ├── lib.rs              # Main library
 │   ├── entrypoint.rs       # Program entrypoint
 │   ├── errors.rs           # Error definitions
 │   ├── instructions/       # Program instructions
 │   │   ├── mod.rs
-│   │   └── initialize.rs   # Initialize instruction
-│   └── states/             # Account state definitions
+│   │   └── initialize.rs
+│   └── states/             # Account states
 │       ├── mod.rs
-│       ├── state.rs        # State structure
-│       └── utils.rs        # State management utilities
-├── tests/                  # Test files
-│   └── tests.rs            # Unit tests using mollusk-svm
-└── target/
-    └── deploy/
-        └── my_project-keypair.json  # Generated program keypair
-
+│       ├── state.rs
+│       └── utils.rs
+├── tests/
+│   └── tests.rs            # Unit tests
+└── target/deploy/
+    └── my_project-keypair.json  # Program keypair
 ```
 
-### Minimal Project
+### Minimal Project (`--no-boilerplate`)
 
-When you initialize a project with `pinoc init --no-boilerplate`, it creates a minimal structure:
+Perfect for quick prototypes or learning:
 
 ```
 my_minimal_project/
-├── Cargo.toml              # Minimal configuration with only pinocchio dependency
+├── Cargo.toml              # Minimal configuration
 ├── README.md               # Basic documentation
-├── .gitignore              # Git ignore file
+├── .gitignore              # Git ignore rules
 ├── Pinoc.toml              # Deployment configuration
 ├── src/
-│   └── lib.rs              # Minimal program with just program ID and basic structure
-└── target/
-    └── deploy/
-        └── my_minimal_project-keypair.json  # Generated program keypair
+│   └── lib.rs              # Minimal program structure
+└── target/deploy/
+    └── my_minimal_project-keypair.json
 ```
 
-**Minimal Project Features:**
-- **No Tests**: No test directory or test dependencies
-- **No Boilerplate**: No instructions, states, or utility files
-- **Essential Only**: Just the core files needed to build and deploy
-- **Fast Setup**: Perfect for quick prototypes or learning
+## 🔧 Advanced Usage
 
-## Key Features in Detail
+### Configuration Management
 
-### 🧹 Smart Project Cleaning
+Pinoc uses `Pinoc.toml` for deployment settings:
 
-The `pinoc clean` command intelligently manages your build artifacts:
-
-```bash
-# Clean target directory while preserving keypairs (default)
-pinoc clean
-
-# Clean everything including keypairs
-pinoc clean --no-preserve
+```toml
+[provider]
+cluster = "localhost"
+wallet = "~/.config/solana/id.json"
 ```
 
-**Why preserve keypairs?** Your program keypair is essential for deployment. The default behavior ensures you don't accidentally lose your deployment credentials.
-
-### 📦 Package Management
-
-Easily add dependencies and discover new packages:
+Override settings per deployment:
 
 ```bash
-# Add a package to your project
-pinoc add package-name
-
-# Search for Pinocchio-related packages
-pinoc search database
-pinoc search oracle
+# Deploy to devnet with custom wallet
+pinoc deploy --cluster devnet --wallet ./custom-keypair.json
 ```
 
-### 🔐 Automatic Keypair Management
+### Key Management
 
-- **Generation**: Keypairs are automatically created during project initialization
-- **Preservation**: Clean commands preserve keypairs by default
-- **Security**: Keypairs are stored securely in `target/deploy/`
-
-### 🔑 Program Key Management
-
-Manage your program keys with consistency checks:
+Keep your program IDs synchronized:
 
 ```bash
-# List all program keypairs
+# Check key consistency
 pinoc keys list
 
 # Sync program ID in lib.rs with keypair
 pinoc keys sync
 ```
 
-**Key Sync Features:**
+Example output:
 
-- **Consistency Check**: Verifies if the program ID in `declare_id!` matches the keypair's public key
-- **Smart Updates**: Only updates the file if there's a mismatch
-- **Clear Feedback**: Shows current state and any changes made
-- **No Unnecessary Writes**: Prevents file updates when keys are already consistent
-
-**Example Output:**
-
-```bash
-# When keys are already consistent
+```
 ✅ Program key is already consistent!
 🔑 Program ID: 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
 📝 No update needed in src/lib.rs
-
-# When keys need syncing
-🔄 Program key mismatch detected:
-   Current in lib.rs: 11111111111111111111111111111111
-   Actual keypair:    9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
-✅ Successfully synced program key!
-🔑 Program ID: 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
-📝 Updated src/lib.rs with new program ID
 ```
 
-### ⚙️ Configuration Management
+### Smart Cleaning
 
-Pinoc uses a `Pinoc.toml` configuration file to manage deployment settings. This file is automatically created when you initialize a new project.
-
-**Pinoc.toml Structure:**
-
-```toml
-[provider]
-cluster = "localhost"
-wallet = "~/.config/solana/id.json"
-```
-
-**Configuration Options:**
-
-- **`cluster`**: The Solana cluster URL to deploy to (e.g., "localhost", "devnet", "mainnet-beta")
-- **`wallet`**: Path to your Solana wallet keypair file (supports `~` for home directory expansion)
-
-**Deployment Process:**
-
-When you run `pinoc deploy`, the tool will:
-
-1. Read the `Pinoc.toml` configuration file
-2. Display the cluster and wallet being used
-3. Deploy your program using the specified settings
-
-**Command-Line Overrides:**
-
-You can override the configuration from `Pinoc.toml` using command-line arguments:
+Clean build artifacts while preserving important files:
 
 ```bash
-# Override cluster only
-pinoc deploy --cluster devnet
+# Clean target directory (preserves keypairs)
+pinoc clean
 
-# Override wallet only  
-pinoc deploy --wallet ./custom-keypair.json
-
-# Override both cluster and wallet
-pinoc deploy --cluster mainnet-beta --wallet ~/.config/solana/mainnet-keypair.json
+# Clean everything including keypairs
+pinoc clean --no-preserve
 ```
 
-**Example Deployment Output:**
+## 🔗 Prerequisites
 
-```bash
-$ pinoc deploy
-Deploying program
-📋 Using configuration:
-   Cluster: devnet
-   Wallet: ~/.config/solana/id.json
-Program deployed successfully!
-```
+Ensure you have these tools installed:
 
-**Customizing Configuration:**
-
-You can edit the `Pinoc.toml` file to change deployment settings, or use command-line arguments for one-time overrides:
-
-```toml
-# For mainnet deployment
-[provider]
-cluster = "mainnet-beta"
-wallet = "~/.config/solana/mainnet-keypair.json"
-
-# For local development
-[provider]
-cluster = "localhost"
-wallet = "~/.config/solana/id.json"
-```
-
-**Command-Line Override Examples:**
-
-```bash
-# Use different cluster for this deployment
-pinoc deploy --cluster devnet
-
-# Use different wallet for this deployment
-pinoc deploy --wallet ./test-keypair.json
-
-# Override both settings
-pinoc deploy --cluster mainnet-beta --wallet ~/.config/solana/production-keypair.json
-```
-
-## Prerequisites
-
-Before using Pinoc, make sure you have the following installed:
-
-- **Rust and Cargo** - [Install Rust](https://rustup.rs/)
-- **Solana CLI Tools** - [Install Solana CLI](https://docs.solana.com/cli/install-solana-cli-tools)
+- **Rust** (1.70+) - [Install here](https://rustup.rs/)
+- **Solana CLI** - [Install guide](https://docs.solana.com/cli/install-solana-cli-tools)
 - **Git** - For version control
 
-## Contributing
+## 🤝 Contributing
 
-Contributions are welcome! Here's how you can contribute:
+We welcome contributions! Here's how to get started:
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests to ensure everything works
-5. Commit your changes (`git commit -m 'Add some amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Make** your changes
+4. **Test** thoroughly
+5. **Commit** with clear messages (`git commit -m 'Add amazing feature'`)
+6. **Push** to your branch (`git push origin feature/amazing-feature`)
+7. **Open** a Pull Request
 
 ### Development Setup
 
-1. **Clone and Build**
-   ```bash
-   git clone https://github.com/a91y/pinoc.git
-   cd pinoc
-   cargo build --release
-   ```
+```bash
+git clone https://github.com/a91y/pinoc.git
+cd pinoc
+cargo build --release
+cargo install --path .
 
-2. **Install Locally**
-   ```bash
-   cargo install --path .
-   ```
+# Test your changes
+pinoc init test-project
+cd test-project
+pinoc build
+```
 
-3. **Test Your Changes**
-   ```bash
-   # Test the CLI
-   pinoc --help
+## 📄 License
 
-   # Create a test project
-   pinoc init test-project
-   cd test-project
-   pinoc build
-   ```
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-## License
+## 🆘 Support & Community
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- 📖 **Documentation**: [Pinocchio Docs](https://github.com/anza-xyz/pinocchio)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/a91y/pinoc/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/a91y/pinoc/discussions)
+- 📦 **Crates.io**: [pinoc](https://crates.io/crates/pinoc)
 
-## Support
+---
 
-- 📖 **Documentation**: This README and the [Pinocchio documentation](https://github.com/anza-xyz/pinocchio)
-- 🐛 **Issues**: Report bugs and request features on [GitHub Issues](https://github.com/a91y/pinoc/issues)
+<div align="center">
+  <p>Made with ❤️ by the Solana community</p>
+  <p>⭐ Star us on GitHub if Pinoc helps you build faster!</p>
+</div>
