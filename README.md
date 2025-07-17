@@ -82,6 +82,10 @@ pinoc test
 
 # Deploy to Solana
 pinoc deploy
+
+# Create a new project without git initialization
+pinoc init my-awesome-app --no-git
+# This will skip git repository initialization.
 ```
 
 ## Usage
@@ -90,7 +94,7 @@ pinoc deploy
 
 | Command | Description |
 |---------|-------------|
-| `pinoc init <project-name>` | Initialize a new Pinocchio project |
+| `pinoc init <project-name> [--no-git]` | Initialize a new Pinocchio project (skip git init with --no-git) |
 | `pinoc build` | Build your Solana program |
 | `pinoc test` | Run project tests |
 | `pinoc deploy` | Deploy your program to Solana |
@@ -106,6 +110,9 @@ pinoc deploy
 ```bash
 # Create a new project
 pinoc init my-pinocchio-app
+
+# Create a new project without git initialization
+pinoc init my-pinocchio-app --no-git
 
 # Navigate to your project
 cd my-pinocchio-app
