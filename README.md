@@ -31,6 +31,7 @@ Pinoc is a command-line tool designed to make it easy to set up and manage [Pino
 - 💻 **Comprehensive Testing** - Built-in testing environment with mollusk-svm
 - 🔐 **Automatic Keypair Management** - Generate and manage program keypairs
 - 🔑 **Program Key Sync** - Keep your program IDs consistent with smart checking
+- ⚙️ **Configuration Management** - Use Pinoc.toml for deployment settings
 
 ## Installation
 
@@ -97,7 +98,7 @@ pinoc init my-awesome-app --no-git
 | `pinoc init <project-name> [--no-git] [--no-boilerplate]` | Initialize a new Pinocchio project (skip git init with --no-git, minimal structure with --no-boilerplate) |
 | `pinoc build` | Build your Solana program |
 | `pinoc test` | Run project tests |
-| `pinoc deploy` | Deploy your program to Solana |
+| `pinoc deploy` | Deploy your program to Solana (uses Pinoc.toml configuration) |
 | `pinoc clean [--no-preserve]` | Clean target directory (preserves keypairs by default) |
 | `pinoc add <package-name>` | Add a package to your project |
 | `pinoc search [query]` | Search for Pinocchio packages |
@@ -158,6 +159,7 @@ my-project/
 ├── Cargo.toml              # Project configuration with Pinocchio dependencies
 ├── README.md               # Project documentation
 ├── .gitignore              # Git ignore file
+├── Pinoc.toml              # Deployment configuration
 ├── src/
 │   ├── lib.rs              # Library crate using no_std
 │   ├── entrypoint.rs       # Program entrypoint
@@ -175,6 +177,8 @@ my-project/
     └── deploy/
         └── my-project-keypair.json  # Generated program keypair
 
+```
+
 ### Minimal Project
 
 When you initialize a project with `pinoc init --no-boilerplate`, it creates a minimal structure:
@@ -184,6 +188,7 @@ my-minimal-project/
 ├── Cargo.toml              # Minimal configuration with only pinocchio dependency
 ├── README.md               # Basic documentation
 ├── .gitignore              # Git ignore file
+├── Pinoc.toml              # Deployment configuration
 ├── src/
 │   └── lib.rs              # Minimal program with just program ID and basic structure
 └── target/
@@ -266,6 +271,58 @@ pinoc keys sync
 ✅ Successfully synced program key!
 🔑 Program ID: 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
 📝 Updated src/lib.rs with new program ID
+```
+
+### ⚙️ Configuration Management
+
+Pinoc uses a `Pinoc.toml` configuration file to manage deployment settings. This file is automatically created when you initialize a new project.
+
+**Pinoc.toml Structure:**
+
+```toml
+[provider]
+cluster = "localhost"
+wallet = "~/.config/solana/id.json"
+```
+
+**Configuration Options:**
+
+- **`cluster`**: The Solana cluster URL to deploy to (e.g., "localhost", "devnet", "mainnet-beta")
+- **`wallet`**: Path to your Solana wallet keypair file (supports `~` for home directory expansion)
+
+**Deployment Process:**
+
+When you run `pinoc deploy`, the tool will:
+
+1. Read the `Pinoc.toml` configuration file
+2. Display the cluster and wallet being used
+3. Deploy your program using the specified settings
+
+**Example Deployment Output:**
+
+```bash
+$ pinoc deploy
+Deploying program
+📋 Using configuration:
+   Cluster: devnet
+   Wallet: ~/.config/solana/id.json
+Program deployed successfully!
+```
+
+**Customizing Configuration:**
+
+You can edit the `Pinoc.toml` file to change deployment settings:
+
+```toml
+# For mainnet deployment
+[provider]
+cluster = "mainnet-beta"
+wallet = "~/.config/solana/mainnet-keypair.json"
+
+# For local development
+[provider]
+cluster = "localhost"
+wallet = "~/.config/solana/id.json"
 ```
 
 ## Prerequisites
