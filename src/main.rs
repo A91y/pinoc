@@ -44,7 +44,12 @@ enum Commands {
     },
     Build,
     Test,
-    Deploy,
+    Deploy {
+        #[arg(long, help = "Cluster override")]
+        cluster: Option<String>,
+        #[arg(long, help = "Wallet override")]
+        wallet: Option<String>,
+    },
     Clean {
         #[arg(long, help = "Remove all files including keypair files")]
         no_preserve: bool,
@@ -102,13 +107,17 @@ fn main() -> Result<()> {
                 println!("Tested successfully!");
             }
         }
-        Commands::Deploy => {
+        Commands::Deploy { cluster, wallet } => {
             println!("Deploying program");
 
             let config = read_pinoc_config()?;
+
+            let cluster_url = cluster.as_deref().unwrap_or(&config.provider.cluster);
+            let wallet_path = wallet.as_deref().unwrap_or(&config.provider.wallet);
+
             println!("📋 Using configuration:");
-            println!("   Cluster: {}", config.provider.cluster);
-            println!("   Wallet: {}", config.provider.wallet);
+            println!("   Cluster: {}", cluster_url);
+            println!("   Wallet: {}", wallet_path);
 
             let target_deploy_dir = Path::new("target/deploy");
             if !target_deploy_dir.exists() {
@@ -136,9 +145,9 @@ fn main() -> Result<()> {
                 .arg("program")
                 .arg("deploy")
                 .arg("--url")
-                .arg(&config.provider.cluster)
+                .arg(cluster_url)
                 .arg("--keypair")
-                .arg(&expand_tilde(&config.provider.wallet)?)
+                .arg(&expand_tilde(wallet_path)?)
                 .arg(&so_path);
 
             let status = deploy_cmd
@@ -196,7 +205,7 @@ fn display_help_banner() -> Result<()> {
     println!("   pinoc init <project_name> [--no-git] [--no-boilerplate] - Initialize a new Pinocchio project");
     println!("   pinoc build               - Build the project");
     println!("   pinoc test                - Run project tests");
-    println!("   pinoc deploy              - Deploy the project (uses Pinoc.toml config)");
+    println!("   pinoc deploy [--cluster] [--wallet] - Deploy the project (uses Pinoc.toml config, optional overrides)");
     println!(
         "   pinoc clean [--no-preserve] - Clean target directory (preserves keypairs by default)"
     );
