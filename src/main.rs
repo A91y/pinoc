@@ -441,9 +441,10 @@ pinocchio-system = "0.2.3"
 shank = "0.4.2"
 
 [dev-dependencies]
-solana-sdk = "2.2.1"
-mollusk-svm = "0.2.0"
-mollusk-svm-bencher = "0.2.0" 
+solana-sdk = "2.3.0"
+solana-program-runtime = "=2.3.1"
+mollusk-svm = "0.3.0"
+mollusk-svm-bencher = "0.3.0" 
 
 [features]
 no-entrypoint = []
