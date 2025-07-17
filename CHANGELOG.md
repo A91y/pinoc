@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `--no-git` flag for `pinoc init` to skip git repository initialization. When used, the generated project will not be initialized with git, and `cargo init` will use `--vcs none` for a clean setup without version control.
 
+### Changed
+- Updated dev-dependencies in generated projects to use latest compatible versions:
+  - `solana-sdk` updated to "2.3.0"
+  - `solana-program-runtime` updated to "=2.3.1"
+  - `mollusk-svm` updated to "0.3.0"
+  - `mollusk-svm-bencher` updated to "0.3.0"
+
 ## [0.1.3] - 2025-07-17
 
 ### Added
