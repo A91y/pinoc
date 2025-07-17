@@ -13,11 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Support for cluster and wallet configuration
   - `pinoc deploy` now reads from `Pinoc.toml` instead of requiring manual parameters
   - Home directory expansion support for wallet paths (e.g., `~/.config/solana/id.json`)
+- Command-line override options for deployment configuration
+  - `--cluster` flag to override cluster URL from Pinoc.toml
+  - `--wallet` flag to override wallet path from Pinoc.toml
+  - Both flags are optional and fall back to Pinoc.toml values when not provided
 - Enhanced deployment feedback showing cluster and wallet being used
 - TOML configuration parsing with proper error handling
 
 ### Changed
-- `pinoc deploy` command now uses configuration from `Pinoc.toml` file
+- `pinoc deploy` command now uses configuration from `Pinoc.toml` file with optional command-line overrides
 - Improved deployment process with better user feedback and error messages
 
 ## [0.1.4] - 2025-07-17

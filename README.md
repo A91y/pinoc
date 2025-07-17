@@ -98,7 +98,7 @@ pinoc init my-awesome-app --no-git
 | `pinoc init <project-name> [--no-git] [--no-boilerplate]` | Initialize a new Pinocchio project (skip git init with --no-git, minimal structure with --no-boilerplate) |
 | `pinoc build` | Build your Solana program |
 | `pinoc test` | Run project tests |
-| `pinoc deploy` | Deploy your program to Solana (uses Pinoc.toml configuration) |
+| `pinoc deploy [--cluster] [--wallet]` | Deploy your program to Solana (uses Pinoc.toml config, optional overrides) |
 | `pinoc clean [--no-preserve]` | Clean target directory (preserves keypairs by default) |
 | `pinoc add <package-name>` | Add a package to your project |
 | `pinoc search [query]` | Search for Pinocchio packages |
@@ -148,6 +148,9 @@ pinoc help
 
 # Deploy your program
 pinoc deploy
+
+# Deploy with custom cluster and wallet
+pinoc deploy --cluster devnet --wallet ./custom-keypair.json
 ```
 
 ## Project Structure
@@ -298,6 +301,21 @@ When you run `pinoc deploy`, the tool will:
 2. Display the cluster and wallet being used
 3. Deploy your program using the specified settings
 
+**Command-Line Overrides:**
+
+You can override the configuration from `Pinoc.toml` using command-line arguments:
+
+```bash
+# Override cluster only
+pinoc deploy --cluster devnet
+
+# Override wallet only  
+pinoc deploy --wallet ./custom-keypair.json
+
+# Override both cluster and wallet
+pinoc deploy --cluster mainnet-beta --wallet ~/.config/solana/mainnet-keypair.json
+```
+
 **Example Deployment Output:**
 
 ```bash
@@ -311,7 +329,7 @@ Program deployed successfully!
 
 **Customizing Configuration:**
 
-You can edit the `Pinoc.toml` file to change deployment settings:
+You can edit the `Pinoc.toml` file to change deployment settings, or use command-line arguments for one-time overrides:
 
 ```toml
 # For mainnet deployment
@@ -323,6 +341,19 @@ wallet = "~/.config/solana/mainnet-keypair.json"
 [provider]
 cluster = "localhost"
 wallet = "~/.config/solana/id.json"
+```
+
+**Command-Line Override Examples:**
+
+```bash
+# Use different cluster for this deployment
+pinoc deploy --cluster devnet
+
+# Use different wallet for this deployment
+pinoc deploy --wallet ./test-keypair.json
+
+# Override both settings
+pinoc deploy --cluster mainnet-beta --wallet ~/.config/solana/production-keypair.json
 ```
 
 ## Prerequisites
