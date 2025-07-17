@@ -121,6 +121,38 @@ impl From<MyProgramError> for ProgramError {
 "#
     }
 
+    pub fn cargo_toml(project_name: &str) -> String {
+        format!(
+            r#"[package]
+name = "{}"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pinocchio = "0.8.4"
+pinocchio-log = "0.4.0"
+pinocchio-pubkey = "0.2.4"
+pinocchio-system = "0.2.3"
+shank = "0.4.2"
+
+[dev-dependencies]
+solana-sdk = "2.3.0"
+solana-program-runtime = "=2.3.1"
+mollusk-svm = "0.3.0"
+mollusk-svm-bencher = "0.3.0" 
+
+[features]
+no-entrypoint = []
+std = []
+test-default = ["no-entrypoint", "std"]
+    "#,
+            project_name
+        )
+    }
+
     pub mod instructions {
         pub fn initialize() -> &'static str {
             r#"use pinocchio::{
@@ -419,9 +451,10 @@ fn test_initialize_mystate() {
         }
     }
 
-    pub fn minimal_cargo_toml(project_name: &str) -> String {
-        format!(
-            r#"[package]
+    pub mod minimal_templates {
+        pub fn minimal_cargo_toml(project_name: &str) -> String {
+            format!(
+                r#"[package]
 name = "{}"
 version = "0.1.0"
 edition = "2021"
@@ -433,12 +466,12 @@ crate-type = ["cdylib", "rlib"]
 pinocchio = "0.8.4"
 pinocchio-pubkey = "0.2.4"
 "#,
-            project_name
-        )
-    }
+                project_name
+            )
+        }
 
-    pub fn minimal_lib_rs(program_address: &str) -> String {
-        let template = r#"use pinocchio::{account_info::AccountInfo, pubkey::Pubkey, ProgramResult};
+        pub fn minimal_lib_rs(program_address: &str) -> String {
+            let template = r#"use pinocchio::{account_info::AccountInfo, pubkey::Pubkey, ProgramResult};
 
 pinocchio_pubkey::declare_id!("{program_address}");
 
@@ -452,12 +485,12 @@ pub fn process_instruction(
 }
 "#;
 
-        template.replace("{program_address}", program_address)
-    }
+            template.replace("{program_address}", program_address)
+        }
 
-    pub fn minimal_readme_md(project_name: &str) -> String {
-        format!(
-            r#"# {}
+        pub fn minimal_readme_md(project_name: &str) -> String {
+            format!(
+                r#"# {}
 
 A minimal Solana program built with Pinocchio.
 
@@ -473,7 +506,8 @@ pinoc build
 pinoc deploy
 ```
 "#,
-            project_name
-        )
+                project_name
+            )
+        }
     }
 }

@@ -320,7 +320,7 @@ fn create_minimal_project_structure(
 
     fs::write(
         project_dir.join("Cargo.toml"),
-        templates::minimal_cargo_toml(project_name),
+        templates::minimal_templates::minimal_cargo_toml(project_name),
     )?;
 
     fs::write(project_dir.join(".gitignore"), templates::gitignore())?;
@@ -330,12 +330,12 @@ fn create_minimal_project_structure(
 
     fs::write(
         src_dir.join("lib.rs"),
-        templates::minimal_lib_rs(&program_address),
+        templates::minimal_templates::minimal_lib_rs(&program_address),
     )?;
 
     fs::write(
         project_dir.join("README.md"),
-        templates::minimal_readme_md(project_name),
+        templates::minimal_templates::minimal_readme_md(project_name),
     )?;
 
     println!("✅ Minimal project structure created!");
@@ -464,37 +464,10 @@ fn create_project_structure(
 }
 
 fn update_cargo_toml(project_dir: &Path, project_name: &str) -> Result<()> {
-    let cargo_toml = format!(
-        r#"[package]
-name = "{}"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-[dependencies]
-pinocchio = "0.8.4"
-pinocchio-log = "0.4.0"
-pinocchio-pubkey = "0.2.4"
-pinocchio-system = "0.2.3"
-shank = "0.4.2"
-
-[dev-dependencies]
-solana-sdk = "2.3.0"
-solana-program-runtime = "=2.3.1"
-mollusk-svm = "0.3.0"
-mollusk-svm-bencher = "0.3.0" 
-
-[features]
-no-entrypoint = []
-std = []
-test-default = ["no-entrypoint", "std"]
-"#,
-        project_name
-    );
-
-    fs::write(project_dir.join("Cargo.toml"), cargo_toml)?;
+    fs::write(
+        project_dir.join("Cargo.toml"),
+        templates::cargo_toml(project_name),
+    )?;
 
     Ok(())
 }
