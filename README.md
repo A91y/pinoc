@@ -94,7 +94,7 @@ pinoc init my-awesome-app --no-git
 
 | Command | Description |
 |---------|-------------|
-| `pinoc init <project-name> [--no-git]` | Initialize a new Pinocchio project (skip git init with --no-git) |
+| `pinoc init <project-name> [--no-git] [--no-boilerplate]` | Initialize a new Pinocchio project (skip git init with --no-git, minimal structure with --no-boilerplate) |
 | `pinoc build` | Build your Solana program |
 | `pinoc test` | Run project tests |
 | `pinoc deploy` | Deploy your program to Solana |
@@ -113,6 +113,9 @@ pinoc init my-pinocchio-app
 
 # Create a new project without git initialization
 pinoc init my-pinocchio-app --no-git
+
+# Create a minimal project without tests and boilerplate
+pinoc init my-minimal-project --no-boilerplate
 
 # Navigate to your project
 cd my-pinocchio-app
@@ -167,7 +170,28 @@ my-project/
 └── target/
     └── deploy/
         └── my-project-keypair.json  # Generated program keypair
+
+### Minimal Project
+
+When you initialize a project with `pinoc init --no-boilerplate`, it creates a minimal structure:
+
 ```
+my-minimal-project/
+├── Cargo.toml              # Minimal configuration with only pinocchio dependency
+├── README.md               # Basic documentation
+├── .gitignore              # Git ignore file
+├── src/
+│   └── lib.rs              # Minimal program with just program ID and basic structure
+└── target/
+    └── deploy/
+        └── my-minimal-project-keypair.json  # Generated program keypair
+```
+
+**Minimal Project Features:**
+- **No Tests**: No test directory or test dependencies
+- **No Boilerplate**: No instructions, states, or utility files
+- **Essential Only**: Just the core files needed to build and deploy
+- **Fast Setup**: Perfect for quick prototypes or learning
 
 ## Key Features in Detail
 

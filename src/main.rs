@@ -27,6 +27,8 @@ enum Commands {
         project_name: String,
         #[arg(long, help = "Don't initialize git")]
         no_git: bool,
+        #[arg(long, help = "Create minimal project without tests and boilerplate")]
+        no_boilerplate: bool,
     },
     Build,
     Test,
@@ -56,8 +58,9 @@ fn main() -> Result<()> {
         Commands::Init {
             project_name,
             no_git,
+            no_boilerplate,
         } => {
-            init_project(project_name, *no_git)?;
+            init_project(project_name, *no_git, *no_boilerplate)?;
         }
         Commands::Build => {
             println!("Building program");
@@ -166,7 +169,7 @@ fn display_help_banner() -> Result<()> {
     println!("👾 Setup your pinocchio project blazingly fast💨");
 
     println!("\n🏗️ AVAILABLE COMMANDS:");
-    println!("   pinoc init <project_name> - Initialize a new Pinocchio project");
+    println!("   pinoc init <project_name> [--no-git] [--no-boilerplate] - Initialize a new Pinocchio project");
     println!("   pinoc build               - Build the project");
     println!("   pinoc test                - Run project tests");
     println!("   pinoc deploy              - Deploy the project");
@@ -179,7 +182,7 @@ fn display_help_banner() -> Result<()> {
     Ok(())
 }
 
-fn init_project(project_name: &str, no_git: bool) -> Result<()> {
+fn init_project(project_name: &str, no_git: bool, no_boilerplate: bool) -> Result<()> {
     // Validate project name - only allow alphanumeric characters and underscores
     if !is_valid_project_name(project_name) {
         anyhow::bail!(
@@ -282,8 +285,12 @@ fn init_project(project_name: &str, no_git: bool) -> Result<()> {
         user_address = String::new();
     }
 
-    create_project_structure(project_dir, user_address, program_address.clone())?;
-    update_cargo_toml(project_dir, project_name)?;
+    if no_boilerplate {
+        create_minimal_project_structure(project_dir, project_name, program_address.clone())?;
+    } else {
+        create_project_structure(project_dir, user_address, program_address.clone())?;
+        update_cargo_toml(project_dir, project_name)?;
+    }
 
     if !no_git {
         init_git_repo(project_dir, project_name)?;
@@ -300,6 +307,39 @@ fn init_project(project_name: &str, no_git: bool) -> Result<()> {
     println!("$ pinoc test");
     println!("$ pinoc deploy");
     println!("");
+
+    Ok(())
+}
+
+fn create_minimal_project_structure(
+    project_dir: &Path,
+    project_name: &str,
+    program_address: String,
+) -> Result<()> {
+    println!("📦 Creating minimal project structure...");
+
+    fs::write(
+        project_dir.join("Cargo.toml"),
+        templates::minimal_cargo_toml(project_name),
+    )?;
+
+    fs::write(project_dir.join(".gitignore"), templates::gitignore())?;
+
+    let src_dir = project_dir.join("src");
+    fs::create_dir_all(&src_dir)?;
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        templates::minimal_lib_rs(&program_address),
+    )?;
+
+    fs::write(
+        project_dir.join("README.md"),
+        templates::minimal_readme_md(project_name),
+    )?;
+
+    println!("✅ Minimal project structure created!");
+    println!("📁 Only essential files generated: Cargo.toml, src/lib.rs, README.md, .gitignore");
 
     Ok(())
 }
