@@ -2,4 +2,4 @@ sign-tag = false
 push = true
 publish = true
 pre-release-commit-message = "Prepare release {{version}}"
-pre-release-hook = "./scripts/check-changelog.sh"
+pre-release-hook = ["./scripts/check-changelog.sh"]
