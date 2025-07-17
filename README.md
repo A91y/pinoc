@@ -1,13 +1,21 @@
-<div align="center"> <img src="assets/logo.png" alt="Pinoc CLI Logo" width="20%"> <h1>Pinoc</h1> <p>Setup Solana Pinocchio projects blazingly fast</p>
+<div align="center">
+  <img src="assets/logo.png" alt="Pinoc CLI Logo" width="20%">
+  <h1>Pinoc</h1>
+  <p>Setup Solana Pinocchio projects blazingly fast</p>
 
-[![Crates.io](https://img.shields.io/crates/v/pinoc)](https://crates.io/crates/pinoc)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.70+-blue.svg)](https://www.rust-lang.org)
+  [![Crates.io](https://img.shields.io/crates/v/pinoc)](https://crates.io/crates/pinoc)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Rust](https://img.shields.io/badge/rust-1.70+-blue.svg)](https://www.rust-lang.org)
 
-**Authors:**
+  **Authors:**
 
-<a class="header-badge" target="_blank" href="https://twitter.com/AyushAgr91"> <img alt="Twitter" src="https://img.shields.io/badge/@AyushAgr91-000000?style=for-the-badge&logo=x&logoColor=white"> </a>
-<a class="header-badge" target="_blank" href="https://twitter.com/4rjunc"> <img alt="Twitter" src="https://img.shields.io/badge/@4rjunc-000000?style=for-the-badge&logo=x&logoColor=white"> </a> </div>
+  <a class="header-badge" target="_blank" href="https://twitter.com/AyushAgr91">
+    <img alt="Twitter" src="https://img.shields.io/badge/@AyushAgr91-000000?style=for-the-badge&logo=x&logoColor=white">
+  </a>
+  <a class="header-badge" target="_blank" href="https://twitter.com/4rjunc">
+    <img alt="Twitter" src="https://img.shields.io/badge/@4rjunc-000000?style=for-the-badge&logo=x&logoColor=white">
+  </a>
+</div>
 
 ## About
 
@@ -15,14 +23,14 @@ Pinoc is a command-line tool designed to make it easy to set up and manage [Pino
 
 ## Features
 
-- 🚀 Fast project scaffolding with best practices
-- 📁 Proper directory structure for Solana/Pinocchio development
-- 🔨 Simple build, test, and deployment commands
-- 🧹 Smart project cleaning with keypair preservation
-- 📦 Package management and search functionality
-- 💻 Comprehensive testing environment setup
-- 🔐 Automatic keypair generation and management
-- 🔑 Program key management with consistency checks
+- 🚀 **Fast Project Scaffolding** - Create new projects with best practices in seconds
+- 📁 **Proper Directory Structure** - Solana/Pinocchio development structure out of the box
+- 🔨 **Simple Commands** - Build, test, and deploy with intuitive commands
+- 🧹 **Smart Project Cleaning** - Clean build artifacts while preserving keypairs
+- 📦 **Package Management** - Add dependencies and search for Pinocchio packages
+- 💻 **Comprehensive Testing** - Built-in testing environment with mollusk-svm
+- 🔐 **Automatic Keypair Management** - Generate and manage program keypairs
+- 🔑 **Program Key Sync** - Keep your program IDs consistent with smart checking
 
 ## Installation
 
@@ -40,20 +48,18 @@ cargo install --git https://github.com/a91y/pinoc --force
 
 ### From Source
 
-1. Clone the repository
-
+1. **Clone the repository**
    ```bash
    git clone https://github.com/a91y/pinoc.git
    cd pinoc
    ```
 
-2. Build the tool
-
+2. **Build the tool**
    ```bash
    cargo build --release
    ```
 
-3. Install globally
+3. **Install globally**
    ```bash
    cargo install --path .
    ```
@@ -82,42 +88,20 @@ pinoc deploy
 
 ### Available Commands
 
-```bash
-# Initialize a new project
-pinoc init <project-name>
+| Command | Description |
+|---------|-------------|
+| `pinoc init <project-name>` | Initialize a new Pinocchio project |
+| `pinoc build` | Build your Solana program |
+| `pinoc test` | Run project tests |
+| `pinoc deploy` | Deploy your program to Solana |
+| `pinoc clean [--no-preserve]` | Clean target directory (preserves keypairs by default) |
+| `pinoc add <package-name>` | Add a package to your project |
+| `pinoc search [query]` | Search for Pinocchio packages |
+| `pinoc keys list` | List all program keypairs |
+| `pinoc keys sync` | Sync program ID in lib.rs with keypair |
+| `pinoc --help` | Get help and see all available commands |
 
-# Build your project
-pinoc build
-
-# Run tests
-pinoc test
-
-# Deploy your program
-pinoc deploy
-
-# Clean target directory (preserves keypairs by default)
-pinoc clean
-
-# Clean target directory (removes everything including keypairs)
-pinoc clean --no-preserve
-
-# Add a package to your project
-pinoc add <package-name>
-
-# Search for Pinocchio packages
-pinoc search [query]
-
-# Manage program keys
-pinoc keys list          # List all program keypairs
-pinoc keys sync          # Sync program ID in lib.rs with keypair
-
-# Get help
-pinoc --help
-```
-
-### Example
-
-Create a new Pinocchio project and get started:
+### Complete Workflow Example
 
 ```bash
 # Create a new project
@@ -132,6 +116,12 @@ pinoc build
 # Run tests
 pinoc test
 
+# List program keys
+pinoc keys list
+
+# Sync program keys (checks consistency first)
+pinoc keys sync
+
 # Clean build artifacts (preserves keypairs)
 pinoc clean
 
@@ -141,12 +131,8 @@ pinoc add some-package
 # Search for packages
 pinoc search database
 
-# List program keys
-pinoc keys list
-
-# Sync program keys (checks consistency first)
-pinoc keys sync
-
+# Deploy your program
+pinoc deploy
 ```
 
 ## Project Structure
@@ -247,6 +233,14 @@ pinoc keys sync
 📝 Updated src/lib.rs with new program ID
 ```
 
+## Prerequisites
+
+Before using Pinoc, make sure you have the following installed:
+
+- **Rust and Cargo** - [Install Rust](https://rustup.rs/)
+- **Solana CLI Tools** - [Install Solana CLI](https://docs.solana.com/cli/install-solana-cli-tools)
+- **Git** - For version control
+
 ## Contributing
 
 Contributions are welcome! Here's how you can contribute:
@@ -261,28 +255,19 @@ Contributions are welcome! Here's how you can contribute:
 
 ### Development Setup
 
-1. **Prerequisites**
-
-   - Rust and Cargo installed
-   - Solana CLI tools installed
-   - Git for version control
-
-2. **Clone and Build**
-
+1. **Clone and Build**
    ```bash
    git clone https://github.com/a91y/pinoc.git
    cd pinoc
    cargo build --release
    ```
 
-3. **Install Locally**
-
+2. **Install Locally**
    ```bash
    cargo install --path .
    ```
 
-4. **Test Your Changes**
-
+3. **Test Your Changes**
    ```bash
    # Test the CLI
    pinoc --help
@@ -292,3 +277,12 @@ Contributions are welcome! Here's how you can contribute:
    cd test-project
    pinoc build
    ```
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+- 📖 **Documentation**: This README and the [Pinocchio documentation](https://github.com/anza-xyz/pinocchio)
+- 🐛 **Issues**: Report bugs and request features on [GitHub Issues](https://github.com/a91y/pinoc/issues)
