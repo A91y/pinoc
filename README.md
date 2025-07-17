@@ -22,6 +22,7 @@ Pinoc is a command-line tool designed to make it easy to set up and manage [Pino
 - 📦 Package management and search functionality
 - 💻 Comprehensive testing environment setup
 - 🔐 Automatic keypair generation and management
+- 🔑 Program key management with consistency checks
 
 ## Installation
 
@@ -106,6 +107,10 @@ pinoc add <package-name>
 # Search for Pinocchio packages
 pinoc search [query]
 
+# Manage program keys
+pinoc keys list          # List all program keypairs
+pinoc keys sync          # Sync program ID in lib.rs with keypair
+
 # Get help
 pinoc --help
 ```
@@ -135,6 +140,12 @@ pinoc add some-package
 
 # Search for packages
 pinoc search database
+
+# List program keys
+pinoc keys list
+
+# Sync program keys (checks consistency first)
+pinoc keys sync
 
 ```
 
@@ -200,6 +211,42 @@ pinoc search oracle
 - **Preservation**: Clean commands preserve keypairs by default
 - **Security**: Keypairs are stored securely in `target/deploy/`
 
+### 🔑 Program Key Management
+
+Manage your program keys with consistency checks:
+
+```bash
+# List all program keypairs
+pinoc keys list
+
+# Sync program ID in lib.rs with keypair
+pinoc keys sync
+```
+
+**Key Sync Features:**
+
+- **Consistency Check**: Verifies if the program ID in `declare_id!` matches the keypair's public key
+- **Smart Updates**: Only updates the file if there's a mismatch
+- **Clear Feedback**: Shows current state and any changes made
+- **No Unnecessary Writes**: Prevents file updates when keys are already consistent
+
+**Example Output:**
+
+```bash
+# When keys are already consistent
+✅ Program key is already consistent!
+🔑 Program ID: 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+📝 No update needed in src/lib.rs
+
+# When keys need syncing
+🔄 Program key mismatch detected:
+   Current in lib.rs: 11111111111111111111111111111111
+   Actual keypair:    9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+✅ Successfully synced program key!
+🔑 Program ID: 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+📝 Updated src/lib.rs with new program ID
+```
+
 ## Contributing
 
 Contributions are welcome! Here's how you can contribute:
@@ -215,11 +262,13 @@ Contributions are welcome! Here's how you can contribute:
 ### Development Setup
 
 1. **Prerequisites**
+
    - Rust and Cargo installed
    - Solana CLI tools installed
    - Git for version control
 
 2. **Clone and Build**
+
    ```bash
    git clone https://github.com/a91y/pinoc.git
    cd pinoc
@@ -227,15 +276,17 @@ Contributions are welcome! Here's how you can contribute:
    ```
 
 3. **Install Locally**
+
    ```bash
    cargo install --path .
    ```
 
 4. **Test Your Changes**
+
    ```bash
    # Test the CLI
    pinoc --help
-   
+
    # Create a test project
    pinoc init test-project
    cd test-project
