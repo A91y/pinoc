@@ -1,11 +1,23 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
 mod content;
 use content::templates;
+
+#[derive(Debug, Deserialize)]
+struct PinocConfig {
+    provider: ProviderConfig,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProviderConfig {
+    cluster: String,
+    wallet: String,
+}
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -93,6 +105,11 @@ fn main() -> Result<()> {
         Commands::Deploy => {
             println!("Deploying program");
 
+            let config = read_pinoc_config()?;
+            println!("📋 Using configuration:");
+            println!("   Cluster: {}", config.provider.cluster);
+            println!("   Wallet: {}", config.provider.wallet);
+
             let target_deploy_dir = Path::new("target/deploy");
             if !target_deploy_dir.exists() {
                 anyhow::bail!("target/deploy directory not found. Please run 'pinoc build' first.");
@@ -114,10 +131,17 @@ fn main() -> Result<()> {
                 )
             })?;
 
-            let status = Command::new("solana")
+            let mut deploy_cmd = Command::new("solana");
+            deploy_cmd
                 .arg("program")
                 .arg("deploy")
-                .arg(&so_path)
+                .arg("--url")
+                .arg(&config.provider.cluster)
+                .arg("--keypair")
+                .arg(&expand_tilde(&config.provider.wallet)?)
+                .arg(&so_path);
+
+            let status = deploy_cmd
                 .spawn()?
                 .wait()
                 .with_context(|| "Failed to deploy program")?;
@@ -172,12 +196,14 @@ fn display_help_banner() -> Result<()> {
     println!("   pinoc init <project_name> [--no-git] [--no-boilerplate] - Initialize a new Pinocchio project");
     println!("   pinoc build               - Build the project");
     println!("   pinoc test                - Run project tests");
-    println!("   pinoc deploy              - Deploy the project");
+    println!("   pinoc deploy              - Deploy the project (uses Pinoc.toml config)");
     println!(
         "   pinoc clean [--no-preserve] - Clean target directory (preserves keypairs by default)"
     );
     println!("   pinoc add <package_name>  - Add a package to the project");
     println!("   pinoc search [query]      - Search for pinocchio packages on crates.io");
+    println!("   pinoc keys list           - List program keypairs");
+    println!("   pinoc keys sync           - Sync program ID with keypair");
 
     Ok(())
 }
@@ -338,8 +364,10 @@ fn create_minimal_project_structure(
         templates::minimal_templates::minimal_readme_md(project_name),
     )?;
 
+    fs::write(project_dir.join("Pinoc.toml"), templates::pinoc_toml())?;
+
     println!("✅ Minimal project structure created!");
-    println!("📁 Only essential files generated: Cargo.toml, src/lib.rs, README.md, .gitignore");
+    println!("📁 Only essential files generated: Cargo.toml, src/lib.rs, README.md, .gitignore, Pinoc.toml");
 
     Ok(())
 }
@@ -409,6 +437,7 @@ fn create_project_structure(
 ) -> Result<()> {
     fs::write(project_dir.join("README.md"), templates::readme_md())?;
     fs::write(project_dir.join(".gitignore"), templates::gitignore())?;
+    fs::write(project_dir.join("Pinoc.toml"), templates::pinoc_toml())?;
 
     let src_dir = project_dir.join("src");
     fs::create_dir_all(&src_dir)?;
@@ -829,4 +858,30 @@ fn extract_current_program_id(lib_content: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn read_pinoc_config() -> Result<PinocConfig> {
+    let config_path = Path::new("Pinoc.toml");
+    if !config_path.exists() {
+        anyhow::bail!("Pinoc.toml not found. Please run this command from a project root.");
+    }
+
+    let config_content =
+        fs::read_to_string(config_path).with_context(|| "Failed to read Pinoc.toml")?;
+
+    let config: PinocConfig =
+        toml::from_str(&config_content).with_context(|| "Failed to parse Pinoc.toml")?;
+
+    Ok(config)
+}
+
+fn expand_tilde(path: &str) -> Result<String> {
+    if path.starts_with("~") {
+        if let Some(home_dir) = dirs::home_dir() {
+            return Ok(path.replacen("~", home_dir.to_str().unwrap_or(""), 1));
+        } else {
+            anyhow::bail!("Could not determine the home directory to expand '~'");
+        }
+    }
+    Ok(path.to_string())
 }
