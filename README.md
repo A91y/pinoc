@@ -72,10 +72,10 @@ cargo install --git https://github.com/a91y/pinoc --force
 cargo install pinoc
 
 # Create a new project
-pinoc init my-awesome-app
+pinoc init my_awesome_app
 
 # Navigate to your project
-cd my-awesome-app
+cd my_awesome_app
 
 # Build and test
 pinoc build
@@ -85,7 +85,7 @@ pinoc test
 pinoc deploy
 
 # Create a new project without git initialization
-pinoc init my-awesome-app --no-git
+pinoc init my_awesome_app --no-git
 # This will skip git repository initialization.
 ```
 
@@ -111,16 +111,16 @@ pinoc init my-awesome-app --no-git
 
 ```bash
 # Create a new project
-pinoc init my-pinocchio-app
+pinoc init my_pinocchio_app
 
 # Create a new project without git initialization
-pinoc init my-pinocchio-app --no-git
+pinoc init my_pinocchio_app --no-git
 
 # Create a minimal project without tests and boilerplate
-pinoc init my-minimal-project --no-boilerplate
+pinoc init my_minimal_project --no-boilerplate
 
 # Navigate to your project
-cd my-pinocchio-app
+cd my_pinocchio_app
 
 # Build your project
 pinoc build
@@ -138,7 +138,7 @@ pinoc keys sync
 pinoc clean
 
 # Add a package
-pinoc add some-package
+pinoc add some_package
 
 # Search for packages
 pinoc search database
@@ -158,7 +158,7 @@ pinoc deploy --cluster devnet --wallet ./custom-keypair.json
 When you initialize a project with `pinoc init`, it creates the following structure:
 
 ```
-my-project/
+my_project/
 ├── Cargo.toml              # Project configuration with Pinocchio dependencies
 ├── README.md               # Project documentation
 ├── .gitignore              # Git ignore file
@@ -178,7 +178,7 @@ my-project/
 │   └── tests.rs            # Unit tests using mollusk-svm
 └── target/
     └── deploy/
-        └── my-project-keypair.json  # Generated program keypair
+        └── my_project-keypair.json  # Generated program keypair
 
 ```
 
@@ -187,7 +187,7 @@ my-project/
 When you initialize a project with `pinoc init --no-boilerplate`, it creates a minimal structure:
 
 ```
-my-minimal-project/
+my_minimal_project/
 ├── Cargo.toml              # Minimal configuration with only pinocchio dependency
 ├── README.md               # Basic documentation
 ├── .gitignore              # Git ignore file
@@ -196,7 +196,7 @@ my-minimal-project/
 │   └── lib.rs              # Minimal program with just program ID and basic structure
 └── target/
     └── deploy/
-        └── my-minimal-project-keypair.json  # Generated program keypair
+        └── my_minimal_project-keypair.json  # Generated program keypair
 ```
 
 **Minimal Project Features:**
