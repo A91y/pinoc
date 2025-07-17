@@ -104,6 +104,7 @@ pinoc init my-awesome-app --no-git
 | `pinoc keys list` | List all program keypairs |
 | `pinoc keys sync` | Sync program ID in lib.rs with keypair |
 | `pinoc --help` | Get help and see all available commands |
+| `pinoc help` | Display custom help banner with all commands |
 
 ### Complete Workflow Example
 
@@ -140,6 +141,9 @@ pinoc add some-package
 
 # Search for packages
 pinoc search database
+
+# Get help
+pinoc help
 
 # Deploy your program
 pinoc deploy
@@ -311,7 +315,7 @@ Contributions are welcome! Here's how you can contribute:
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Support
 
