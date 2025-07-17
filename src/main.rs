@@ -25,6 +25,8 @@ enum KeyCommands {
 enum Commands {
     Init {
         project_name: String,
+        #[arg(long, help = "Don't initialize git")]
+        no_git: bool,
     },
     Build,
     Test,
@@ -51,8 +53,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Init { project_name } => {
-            init_project(project_name)?;
+        Commands::Init {
+            project_name,
+            no_git,
+        } => {
+            init_project(project_name, *no_git)?;
         }
         Commands::Build => {
             println!("Building program");
@@ -174,7 +179,7 @@ fn display_help_banner() -> Result<()> {
     Ok(())
 }
 
-fn init_project(project_name: &str) -> Result<()> {
+fn init_project(project_name: &str, no_git: bool) -> Result<()> {
     // Validate project name - only allow alphanumeric characters and underscores
     if !is_valid_project_name(project_name) {
         anyhow::bail!(
@@ -201,11 +206,18 @@ fn init_project(project_name: &str) -> Result<()> {
         .with_context(|| format!("Failed to create project directory: {}", project_name))?;
 
     // init new cargo project inside
-    let output = Command::new("cargo")
+    let mut cargo_init = Command::new("cargo");
+    cargo_init
         .arg("init")
         .arg("--lib")
         .arg("--name")
-        .arg(project_name)
+        .arg(project_name);
+
+    if no_git {
+        cargo_init.arg("--vcs").arg("none");
+    }
+
+    let output = cargo_init
         .current_dir(project_dir)
         .output()
         .with_context(|| "Failed to run 'cargo init'")?;
@@ -273,7 +285,9 @@ fn init_project(project_name: &str) -> Result<()> {
     create_project_structure(project_dir, user_address, program_address.clone())?;
     update_cargo_toml(project_dir, project_name)?;
 
-    init_git_repo(project_dir, project_name)?;
+    if !no_git {
+        init_git_repo(project_dir, project_name)?;
+    }
 
     println!("");
     println!(
