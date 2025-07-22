@@ -5,8 +5,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-mod content;
-use content::templates;
+mod templates;
 
 #[derive(Debug, Deserialize)]
 struct PinocConfig {
@@ -238,7 +237,7 @@ fn init_project(project_name: &str, no_git: bool, no_boilerplate: bool) -> Resul
  "#
     );
     println!("🧑🏻‍🍳 Initializing your pinocchio project: {}", project_name);
-    println!(""); // Create the project directory
+    println!(); // Create the project directory
     let project_dir = Path::new(project_name);
     fs::create_dir_all(project_dir)
         .with_context(|| format!("Failed to create project directory: {}", project_name))?;
@@ -309,16 +308,15 @@ fn init_project(project_name: &str, no_git: bool, no_boilerplate: bool) -> Resul
         .output()
         .with_context(|| "Failed to get user address")?;
 
-    let user_address: String;
-    if user_address_output.status.success() {
-        user_address = String::from_utf8_lossy(&user_address_output.stdout)
+    let user_address = if user_address_output.status.success() {
+        String::from_utf8_lossy(&user_address_output.stdout)
             .trim()
-            .to_string();
+            .to_string()
     } else {
         let error = String::from_utf8_lossy(&user_address_output.stderr);
         println!("Failed to get user Solana address: {}", error);
-        user_address = String::new();
-    }
+        String::new()
+    };
 
     if no_boilerplate {
         create_minimal_project_structure(project_dir, project_name, program_address.clone())?;
@@ -331,7 +329,7 @@ fn init_project(project_name: &str, no_git: bool, no_boilerplate: bool) -> Resul
         init_git_repo(project_dir, project_name)?;
     }
 
-    println!("");
+    println!();
     println!(
         "✅ Pinocchio Project '{}' initialized successfully!",
         project_name
@@ -341,7 +339,7 @@ fn init_project(project_name: &str, no_git: bool, no_boilerplate: bool) -> Resul
     println!("$ pinoc build");
     println!("$ pinoc test");
     println!("$ pinoc deploy");
-    println!("");
+    println!();
 
     Ok(())
 }
@@ -355,7 +353,7 @@ fn create_minimal_project_structure(
 
     fs::write(
         project_dir.join("Cargo.toml"),
-        templates::minimal_templates::minimal_cargo_toml(project_name),
+        templates::minimal::cargo_toml(project_name),
     )?;
 
     fs::write(project_dir.join(".gitignore"), templates::gitignore())?;
@@ -365,12 +363,12 @@ fn create_minimal_project_structure(
 
     fs::write(
         src_dir.join("lib.rs"),
-        templates::minimal_templates::minimal_lib_rs(&program_address),
+        templates::minimal::lib_rs(&program_address),
     )?;
 
     fs::write(
         project_dir.join("README.md"),
-        templates::minimal_templates::minimal_readme_md(project_name),
+        templates::minimal::readme_md(project_name),
     )?;
 
     fs::write(project_dir.join("Pinoc.toml"), templates::pinoc_toml())?;
@@ -726,7 +724,7 @@ fn list_program_keys() -> Result<()> {
     }
 
     println!("\n📋 Program Keys:");
-    println!("{:<20} {:<50} {}", "Program", "Public Key", "Keypair File");
+    println!("{:<20} {:<50} {:<30}", "Program", "Public Key", "Keypair File");
     println!("{:-<20} {:-<50} {:-<30}", "", "", "");
 
     for (program_name, pubkey, keypair_path) in found_keys {
