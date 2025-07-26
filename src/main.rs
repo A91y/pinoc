@@ -1,11 +1,13 @@
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+mod commands;
 mod content;
+use commands::*;
 use content::templates;
 
 #[derive(Debug, Deserialize)]
@@ -17,55 +19,6 @@ struct PinocConfig {
 struct ProviderConfig {
     cluster: String,
     wallet: String,
-}
-
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-#[command(propagate_version = true)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand)]
-enum KeyCommands {
-    List,
-    Sync,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    Init {
-        project_name: String,
-        #[arg(long, help = "Don't initialize git")]
-        no_git: bool,
-        #[arg(long, help = "Create minimal project without tests and boilerplate")]
-        no_boilerplate: bool,
-    },
-    Build,
-    Test,
-    Deploy {
-        #[arg(long, help = "Cluster override")]
-        cluster: Option<String>,
-        #[arg(long, help = "Wallet override")]
-        wallet: Option<String>,
-    },
-    Clean {
-        #[arg(long, help = "Remove all files including keypair files")]
-        no_preserve: bool,
-    },
-    Add {
-        package_name: String,
-    },
-    Search {
-        query: Option<String>,
-    },
-    Keys {
-        #[command(subcommand)]
-        command: KeyCommands,
-    },
-    #[command(name = "--help")]
-    Help,
 }
 
 fn main() -> Result<()> {
@@ -80,96 +33,17 @@ fn main() -> Result<()> {
             init_project(project_name, *no_git, *no_boilerplate)?;
         }
         Commands::Build => {
-            println!("Building program");
-            let status = Command::new("cargo")
-                .arg("build-sbf")
-                .spawn()?
-                .wait()
-                .with_context(|| "Failed to build project")?;
-
-            if !status.success() {
-                anyhow::bail!("Build failed with exit code: {:?}", status.code());
-            } else {
-                println!("Build completed successfully!");
-            }
+            commands::build()?;
         }
         Commands::Test => {
-            println!("Testing program");
-            let status = Command::new("cargo")
-                .arg("test")
-                .spawn()?
-                .wait()
-                .with_context(|| "Failed to test project")?;
-
-            if !status.success() {
-                anyhow::bail!("Test failed with exit code: {:?}", status.code());
-            } else {
-                println!("Tested successfully!");
-            }
+            commands::test()?;
         }
         Commands::Deploy { cluster, wallet } => {
-            println!("Deploying program");
-
-            let config = read_pinoc_config()?;
-
-            let cluster_url = cluster.as_deref().unwrap_or(&config.provider.cluster);
-            let wallet_path = wallet.as_deref().unwrap_or(&config.provider.wallet);
-
-            println!("📋 Using configuration:");
-            println!("   Cluster: {}", cluster_url);
-            println!("   Wallet: {}", wallet_path);
-
-            let target_deploy_dir = Path::new("target/deploy");
-            if !target_deploy_dir.exists() {
-                anyhow::bail!("target/deploy directory not found. Please run 'pinoc build' first.");
-            }
-
-            let mut so_file = None;
-            for entry in fs::read_dir(target_deploy_dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("so") {
-                    so_file = Some(path);
-                    break;
-                }
-            }
-
-            let so_path = so_file.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "No .so file found in target/deploy. Please run 'pinoc build' first."
-                )
-            })?;
-
-            let mut deploy_cmd = Command::new("solana");
-            deploy_cmd
-                .arg("program")
-                .arg("deploy")
-                .arg("--url")
-                .arg(cluster_url)
-                .arg("--keypair")
-                .arg(&expand_tilde(wallet_path)?)
-                .arg(&so_path);
-
-            let status = deploy_cmd
-                .spawn()?
-                .wait()
-                .with_context(|| "Failed to deploy program")?;
-
-            if !status.success() {
-                anyhow::bail!("Deploy failed with exit code: {:?}", status.code());
-            } else {
-                println!("Program deployed successfully!");
-            }
+            commands::deploy(cluster, wallet)?;
         }
-        Commands::Clean { no_preserve } => {
-            clean_project(*no_preserve)?;
-        }
-        Commands::Add { package_name } => {
-            add_package(package_name)?;
-        }
-        Commands::Search { query } => {
-            search_packages(query.as_deref())?;
-        }
+        Commands::Clean { no_preserve } => clean_project(*no_preserve)?,
+        Commands::Add { package_name } => add_package(package_name)?,
+        Commands::Search { query } => search_packages(query.as_deref())?,
         Commands::Keys { command } => match command {
             KeyCommands::List => {
                 list_program_keys()?;
@@ -178,9 +52,7 @@ fn main() -> Result<()> {
                 sync_program_keys()?;
             }
         },
-        Commands::Help => {
-            display_help_banner()?;
-        }
+        Commands::Help => display_help_banner()?,
     }
 
     Ok(())
