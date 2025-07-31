@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 mod content;
 use content::templates;
@@ -42,8 +42,14 @@ enum Commands {
         #[arg(long, help = "Create minimal project without tests and boilerplate")]
         no_boilerplate: bool,
     },
-    Build,
-    Test,
+    Build {
+        #[arg(long, short, help = "Suppress verbose output")]
+        quiet: bool,
+    },
+    Test {
+        #[arg(long, short, help = "Suppress verbose output")]
+        quiet: bool,
+    },
     Deploy {
         #[arg(long, help = "Cluster override")]
         cluster: Option<String>,
@@ -79,28 +85,32 @@ fn main() -> Result<()> {
         } => {
             init_project(project_name, *no_git, *no_boilerplate)?;
         }
-        Commands::Build => {
+        Commands::Build { quiet } => {
             println!("Building program");
-            let status = Command::new("cargo")
-                .arg("build-sbf")
-                .spawn()?
-                .wait()
-                .with_context(|| "Failed to build project")?;
-
+            let mut cmd = Command::new("cargo");
+            cmd.arg("build-sbf");
+            if *quiet {
+                cmd.arg("--").arg("--quiet");
+            }
+        
+            let status = cmd.spawn()?.wait().context("Failed to build project")?;
             if !status.success() {
                 anyhow::bail!("Build failed with exit code: {:?}", status.code());
             } else {
                 println!("Build completed successfully!");
             }
         }
-        Commands::Test => {
+        Commands::Test { quiet } => {
             println!("Testing program");
-            let status = Command::new("cargo")
-                .arg("test")
-                .spawn()?
-                .wait()
-                .with_context(|| "Failed to test project")?;
-
+            let mut cmd = Command::new("cargo");
+            cmd.arg("test");
+            if *quiet {
+                cmd.arg("--").arg("--quiet");
+                cmd.stdout(Stdio::null());
+                cmd.stderr(Stdio::null());
+            }
+        
+            let status = cmd.spawn()?.wait().context("Failed to test project")?;
             if !status.success() {
                 anyhow::bail!("Test failed with exit code: {:?}", status.code());
             } else {
