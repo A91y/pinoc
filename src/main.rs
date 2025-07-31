@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 mod content;
 use content::templates;
@@ -106,6 +106,8 @@ fn main() -> Result<()> {
             cmd.arg("test");
             if *quiet {
                 cmd.arg("--").arg("--quiet");
+                cmd.stdout(Stdio::null());
+                cmd.stderr(Stdio::null());
             }
         
             let status = cmd.spawn()?.wait().context("Failed to test project")?;
