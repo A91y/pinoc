@@ -624,6 +624,23 @@ fn parse_cargo_search_output(output: &str) -> Result<Vec<SearchResult>> {
     Ok(packages)
 }
 
+/// Removing a large `target/` dir can transiently fail with "Directory not empty"
+/// if a just-exited cargo process hasn't released a file handle yet. Retry a few
+/// times before giving up.
+fn remove_dir_all_with_retry(path: &Path) -> std::io::Result<()> {
+    let mut last_err = None;
+    for attempt in 0..5 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        match fs::remove_dir_all(path) {
+            Ok(()) => return Ok(()),
+            Err(e) => last_err = Some(e),
+        }
+    }
+    Err(last_err.unwrap())
+}
+
 fn clean_project(no_preserve: bool) -> Result<()> {
     println!("🧹 Cleaning project...");
 
@@ -654,7 +671,7 @@ fn clean_project(no_preserve: bool) -> Result<()> {
         }
     }
 
-    fs::remove_dir_all(target_dir).with_context(|| "Failed to remove target directory")?;
+    remove_dir_all_with_retry(target_dir).with_context(|| "Failed to remove target directory")?;
 
     if !no_preserve {
         fs::create_dir_all(&deploy_dir)
