@@ -109,7 +109,7 @@ That's it! You now have a fully functional Solana program ready for development.
 | `pinoc search [query]` | Search packages       | `pinoc search database`         |
 | `pinoc keys list`      | List program keypairs | `pinoc keys list`               |
 | `pinoc keys sync`      | Sync program IDs      | `pinoc keys sync`               |
-| `pinoc idl`            | Generate an IDL JSON  | `pinoc idl --out-dir idl`       |
+| `pinoc idl`            | Regenerate the IDL JSON | `pinoc idl --out-dir target/idl` |
 | `pinoc help`           | Show help             | `pinoc help`                    |
 
 ### Command Options
@@ -217,7 +217,9 @@ pinoc clean --no-preserve
 
 ### IDL Generation
 
-Generate an Anchor-style IDL JSON describing your program's instructions, accounts, types, and errors, powered by [shank](https://github.com/metaplex-foundation/shank) (built into `pinoc`, no separate install needed):
+`pinoc build` automatically (re)generates an Anchor-style IDL JSON at `target/idl/<project_name>.json`, describing your program's instructions, accounts, types, and errors — powered by [shank](https://github.com/metaplex-foundation/shank), built into `pinoc` itself (no separate install needed). A failed IDL extraction only prints a warning; it never fails the build.
+
+You can also regenerate it on its own:
 
 ```bash
 pinoc idl

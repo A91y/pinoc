@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `pinoc idl [--out-dir]`: generates an Anchor-style IDL JSON (instructions, accounts, types, errors) using [shank](https://github.com/metaplex-foundation/shank)'s `shank_idl` crate directly, compiled into `pinoc` itself — no separate `shank-cli` install required. The `--with-example` template's instructions/accounts/errors are annotated with `shank`'s derive macros so `pinoc idl` works immediately.
+- `pinoc idl [--out-dir]`: generates an Anchor-style IDL JSON (instructions, accounts, types, errors) at `target/idl/<name>.json` by default, using [shank](https://github.com/metaplex-foundation/shank)'s `shank_idl` crate directly, compiled into `pinoc` itself — no separate `shank-cli` install required. `pinoc build` now also regenerates the IDL automatically after a successful build, matching `anchor build`'s behavior; a failed IDL extraction only warns, it never fails the build. The `--with-example` template's instructions/accounts/errors are annotated with `shank`'s derive macros so this works immediately.
 
 ### Changed
 - **Breaking**: `pinoc init` now generates the minimal no-op program by default (previously behind `--no-boilerplate`). The full PDA-account example is now opt-in via `--with-example` (replaces `--no-boilerplate`, which is removed).

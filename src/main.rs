@@ -71,7 +71,7 @@ enum Commands {
         command: KeyCommands,
     },
     Idl {
-        #[arg(long, help = "Output directory for the IDL JSON", default_value = "idl")]
+        #[arg(long, help = "Output directory for the IDL JSON", default_value = "target/idl")]
         out_dir: String,
     },
     #[command(name = "--help")]
@@ -102,6 +102,10 @@ fn main() -> Result<()> {
                 anyhow::bail!("Build failed with exit code: {:?}", status.code());
             } else {
                 println!("Build completed successfully!");
+            }
+
+            if let Err(e) = generate_idl("target/idl") {
+                println!("⚠️  Skipped IDL generation: {e}");
             }
         }
         Commands::Test { quiet } => {
@@ -228,7 +232,7 @@ fn display_help_banner() -> Result<()> {
 
     println!("\n🏗️ AVAILABLE COMMANDS:");
     println!("   pinoc init <project_name> [--no-git] [--with-example] - Initialize a new Pinocchio project");
-    println!("   pinoc build               - Build the project");
+    println!("   pinoc build               - Build the project (also regenerates target/idl/*.json)");
     println!("   pinoc test                - Run project tests");
     println!("   pinoc deploy [--cluster] [--wallet] - Deploy the project (uses Pinoc.toml config, optional overrides)");
     println!(
@@ -238,7 +242,7 @@ fn display_help_banner() -> Result<()> {
     println!("   pinoc search [query]      - Search for pinocchio packages on crates.io");
     println!("   pinoc keys list           - List program keypairs");
     println!("   pinoc keys sync           - Sync program ID with keypair");
-    println!("   pinoc idl [--out-dir]     - Generate an IDL JSON via shank-cli");
+    println!("   pinoc idl [--out-dir]     - Regenerate the IDL JSON (also runs automatically on 'pinoc build')");
 
     Ok(())
 }
