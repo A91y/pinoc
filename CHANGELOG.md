@@ -5,6 +5,18 @@ All notable changes to the `pinoc` CLI tool will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-07-13
+
+### Added
+- `--quiet`/`-q` flag for `pinoc build` and `pinoc test` to suppress verbose cargo output. On `test`, a failing run still prints the panic message/assertion diff instead of hiding it.
+
+### Changed
+- Split `src/content.rs` into a `src/templates/` module with per-topic submodules (`instructions`, `minimal`, `states`, `unit_tests`) for maintainability.
+- Corrected `Cargo.toml`'s `license` field from `MIT` to `Apache-2.0`, matching the actual `LICENSE` file and README.
+
+### Fixed
+- `pinoc keys list` header row column widths now match the separator row below it.
+
 ## [0.1.6] - 2026-07-13
 
 ### Fixed
