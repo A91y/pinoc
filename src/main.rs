@@ -39,8 +39,8 @@ enum Commands {
         project_name: String,
         #[arg(long, help = "Don't initialize git")]
         no_git: bool,
-        #[arg(long, help = "Create minimal project without tests and boilerplate")]
-        no_boilerplate: bool,
+        #[arg(long, help = "Include a worked PDA-account example instead of a no-op program")]
+        with_example: bool,
     },
     Build {
         #[arg(long, short, help = "Suppress verbose output")]
@@ -81,9 +81,9 @@ fn main() -> Result<()> {
         Commands::Init {
             project_name,
             no_git,
-            no_boilerplate,
+            with_example,
         } => {
-            init_project(project_name, *no_git, *no_boilerplate)?;
+            init_project(project_name, *no_git, *with_example)?;
         }
         Commands::Build { quiet } => {
             println!("Building program");
@@ -220,7 +220,7 @@ fn display_help_banner() -> Result<()> {
     println!("👾 Setup your pinocchio project blazingly fast💨");
 
     println!("\n🏗️ AVAILABLE COMMANDS:");
-    println!("   pinoc init <project_name> [--no-git] [--no-boilerplate] - Initialize a new Pinocchio project");
+    println!("   pinoc init <project_name> [--no-git] [--with-example] - Initialize a new Pinocchio project");
     println!("   pinoc build               - Build the project");
     println!("   pinoc test                - Run project tests");
     println!("   pinoc deploy [--cluster] [--wallet] - Deploy the project (uses Pinoc.toml config, optional overrides)");
@@ -235,7 +235,7 @@ fn display_help_banner() -> Result<()> {
     Ok(())
 }
 
-fn init_project(project_name: &str, no_git: bool, no_boilerplate: bool) -> Result<()> {
+fn init_project(project_name: &str, no_git: bool, with_example: bool) -> Result<()> {
     if !is_valid_project_name(project_name) {
         anyhow::bail!(
             "Invalid project name '{}'. Project names can only contain letters, numbers, and underscores (_). \
@@ -334,11 +334,11 @@ fn init_project(project_name: &str, no_git: bool, no_boilerplate: bool) -> Resul
         String::new()
     };
 
-    if no_boilerplate {
-        create_minimal_project_structure(project_dir, project_name, program_address.clone())?;
-    } else {
+    if with_example {
         create_project_structure(project_dir, user_address, program_address.clone())?;
         update_cargo_toml(project_dir, project_name)?;
+    } else {
+        create_minimal_project_structure(project_dir, project_name, program_address.clone())?;
     }
 
     if !no_git {

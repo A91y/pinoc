@@ -114,13 +114,31 @@ That's it! You now have a fully functional Solana program ready for development.
 ### Command Options
 
 - `pinoc init <name> --no-git` - Skip git initialization
-- `pinoc init <name> --no-boilerplate` - Create minimal project structure
+- `pinoc init <name> --with-example` - Include a worked PDA-account example instead of a no-op program
 - `pinoc clean --no-preserve` - Clean everything including keypairs
 - `pinoc deploy --cluster <cluster> --wallet <path>` - Override deployment settings
 
 ## 📂 Project Structure
 
 ### Standard Project
+
+A blank, buildable program with a single no-op instruction, ready for you to fill in:
+
+```
+my_minimal_project/
+├── Cargo.toml              # Project configuration
+├── README.md               # Basic documentation
+├── .gitignore              # Git ignore rules
+├── Pinoc.toml              # Deployment configuration
+├── src/
+│   └── lib.rs              # Minimal program structure
+└── target/deploy/
+    └── my_minimal_project-keypair.json
+```
+
+### Worked Example Project (`--with-example`)
+
+A full PDA-account creation example, useful as a reference for the CPI/PDA pattern:
 
 ```
 my_project/
@@ -143,22 +161,6 @@ my_project/
 │   └── tests.rs            # Unit tests
 └── target/deploy/
     └── my_project-keypair.json  # Program keypair
-```
-
-### Minimal Project (`--no-boilerplate`)
-
-Perfect for quick prototypes or learning:
-
-```
-my_minimal_project/
-├── Cargo.toml              # Minimal configuration
-├── README.md               # Basic documentation
-├── .gitignore              # Git ignore rules
-├── Pinoc.toml              # Deployment configuration
-├── src/
-│   └── lib.rs              # Minimal program structure
-└── target/deploy/
-    └── my_minimal_project-keypair.json
 ```
 
 ## 🔧 Advanced Usage
