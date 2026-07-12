@@ -109,9 +109,7 @@ fn main() -> Result<()> {
             }
 
             let status = if *quiet {
-                // Buffer output instead of discarding it outright, so a failing
-                // test still prints its panic message / assertion diff instead
-                // of just an opaque exit code.
+                // buffered so failures still print instead of just an exit code
                 let output = cmd.output().context("Failed to test project")?;
                 if !output.status.success() {
                     std::io::stdout().write_all(&output.stdout)?;
@@ -208,7 +206,6 @@ fn main() -> Result<()> {
 }
 
 fn display_help_banner() -> Result<()> {
-    // banner
     println!(
         r#"
        _                   
@@ -239,7 +236,6 @@ fn display_help_banner() -> Result<()> {
 }
 
 fn init_project(project_name: &str, no_git: bool, no_boilerplate: bool) -> Result<()> {
-    // Validate project name - only allow alphanumeric characters and underscores
     if !is_valid_project_name(project_name) {
         anyhow::bail!(
             "Invalid project name '{}'. Project names can only contain letters, numbers, and underscores (_). \
@@ -259,12 +255,11 @@ fn init_project(project_name: &str, no_git: bool, no_boilerplate: bool) -> Resul
  "#
     );
     println!("🧑🏻‍🍳 Initializing your pinocchio project: {}", project_name);
-    println!(); // Create the project directory
+    println!();
     let project_dir = Path::new(project_name);
     fs::create_dir_all(project_dir)
         .with_context(|| format!("Failed to create project directory: {}", project_name))?;
 
-    // init new cargo project inside
     let mut cargo_init = Command::new("cargo");
     cargo_init
         .arg("init")
@@ -289,13 +284,12 @@ fn init_project(project_name: &str, no_git: bool, no_boilerplate: bool) -> Resul
     let deploy_dir = project_dir.join("target").join("deploy");
     fs::create_dir_all(&deploy_dir)?;
 
-    // generate keypair
     let keypair_path = format!("./target/deploy/{}-keypair.json", project_name);
     let keygen_output = Command::new("solana-keygen")
         .arg("new")
         .arg("-o")
         .arg(&keypair_path)
-        .arg("--no-bip39-passphrase") // skip the passphrase prompt
+        .arg("--no-bip39-passphrase")
         .current_dir(project_dir)
         .output()
         .with_context(|| "Failed to generate keypair")?;
@@ -401,7 +395,6 @@ fn create_minimal_project_structure(
     Ok(())
 }
 
-/// validates that the project name only contains alphanumeric characters and underscores
 fn is_valid_project_name(name: &str) -> bool {
     if name.is_empty() {
         return false;
@@ -448,7 +441,6 @@ fn init_git_repo(project_dir: &Path, project_name: &str) -> Result<()> {
     if !git_commit_output.status.success() {
         let error = String::from_utf8_lossy(&git_commit_output.stderr);
         println!("Warning: Failed to make initial commit: {}", error);
-        // Check if it's because of missing git config
         if error.contains("user.email") || error.contains("user.name") {
             println!("Hint: Set your git config with:");
             println!("  git config --global user.email \"you@example.com\"");
@@ -531,7 +523,6 @@ fn update_cargo_toml(project_dir: &Path, project_name: &str) -> Result<()> {
 }
 
 fn add_package(package_name: &str) -> Result<()> {
-    // Check if Cargo.toml exists
     let cargo_toml_path = Path::new("Cargo.toml");
     if !cargo_toml_path.exists() {
         anyhow::bail!(
@@ -539,7 +530,6 @@ fn add_package(package_name: &str) -> Result<()> {
         );
     }
 
-    // Add the package using cargo add
     println!("📦 Adding package: {}", package_name);
     let status = Command::new("cargo")
         .arg("add")
@@ -569,7 +559,6 @@ fn search_packages(query: Option<&str>) -> Result<()> {
 
     println!("🔍 Searching for packages matching '{}'...\n", search_term);
 
-    // Run cargo search
     let output = Command::new("cargo")
         .arg("search")
         .arg(&search_term)
@@ -644,9 +633,7 @@ fn parse_cargo_search_output(output: &str) -> Result<Vec<SearchResult>> {
     Ok(packages)
 }
 
-/// Removing a large `target/` dir can transiently fail with "Directory not empty"
-/// if a just-exited cargo process hasn't released a file handle yet. Retry a few
-/// times before giving up.
+/// Retries removal since a just-exited cargo process can transiently hold the dir open.
 fn remove_dir_all_with_retry(path: &Path) -> std::io::Result<()> {
     let mut last_err = None;
     for attempt in 0..5 {
@@ -737,7 +724,6 @@ fn list_program_keys() -> Result<()> {
                 if name_str.ends_with("-keypair.json") {
                     let program_name = name_str.replace("-keypair.json", "");
 
-                    // Get the public key from the keypair
                     let address_output = Command::new("solana")
                         .arg("address")
                         .arg("-k")
@@ -802,7 +788,6 @@ fn sync_program_keys() -> Result<()> {
         );
     }
 
-    // Get the actual program public key
     let address_output = Command::new("solana")
         .arg("address")
         .arg("-k")
@@ -818,7 +803,6 @@ fn sync_program_keys() -> Result<()> {
         .trim()
         .to_string();
 
-    // Find and update the declare_id! macro in lib.rs
     let lib_rs_path = Path::new("src/lib.rs");
     if !lib_rs_path.exists() {
         anyhow::bail!("src/lib.rs not found");
@@ -827,7 +811,6 @@ fn sync_program_keys() -> Result<()> {
     let lib_content =
         fs::read_to_string(lib_rs_path).with_context(|| "Failed to read src/lib.rs")?;
 
-    // Check if the key is already consistent
     if let Some(current_pubkey) = extract_current_program_id(&lib_content) {
         if current_pubkey == actual_pubkey {
             println!("✅ Program key is already consistent!");
@@ -894,7 +877,7 @@ fn update_declare_id(lib_content: &str, new_pubkey: &str) -> Option<String> {
 fn extract_current_program_id(lib_content: &str) -> Option<String> {
     for line in lib_content.lines() {
         if line.contains("declare_id!") {
-            // Look for the pattern: declare_id!("...") or pinocchio_pubkey::declare_id!("...")
+            // matches both declare_id! and pinocchio_pubkey::declare_id!
             if let Some(start) = line.find("declare_id!(\"") {
                 let after_declare = &line[start + 13..]; // Skip "declare_id!(\""
                 if let Some(end) = after_declare.find("\"") {
