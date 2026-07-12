@@ -2,8 +2,9 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 mod templates;
 
@@ -105,11 +106,22 @@ fn main() -> Result<()> {
             cmd.arg("test");
             if *quiet {
                 cmd.arg("--").arg("--quiet");
-                cmd.stdout(Stdio::null());
-                cmd.stderr(Stdio::null());
             }
-        
-            let status = cmd.spawn()?.wait().context("Failed to test project")?;
+
+            let status = if *quiet {
+                // Buffer output instead of discarding it outright, so a failing
+                // test still prints its panic message / assertion diff instead
+                // of just an opaque exit code.
+                let output = cmd.output().context("Failed to test project")?;
+                if !output.status.success() {
+                    std::io::stdout().write_all(&output.stdout)?;
+                    std::io::stderr().write_all(&output.stderr)?;
+                }
+                output.status
+            } else {
+                cmd.spawn()?.wait().context("Failed to test project")?
+            };
+
             if !status.success() {
                 anyhow::bail!("Test failed with exit code: {:?}", status.code());
             } else {
