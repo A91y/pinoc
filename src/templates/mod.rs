@@ -18,7 +18,7 @@ pub mod errors;
 pub mod instructions;
 pub mod states;
 
-pinocchio_pubkey::declare_id!("{}");"#,
+pub const ID: pinocchio::Address = pinocchio::Address::from_str_const("{}");"#,
         address
     )
 }
@@ -29,21 +29,19 @@ pub fn entrypoint_rs() -> &'static str {
 
 use crate::instructions::{self, ProgramInstruction};
 use pinocchio::{
-    account_info::AccountInfo, default_panic_handler, msg, no_allocator, program_entrypoint,
-    program_error::ProgramError, pubkey::Pubkey, ProgramResult,
+    default_panic_handler, error::ProgramError, no_allocator, program_entrypoint, AccountView,
+    Address, ProgramResult,
 };
+use pinocchio_log::log;
 
-// This is the entrypoint for the program.
 program_entrypoint!(process_instruction);
-//Do not allocate memory.
 no_allocator!();
-// Use the no_std panic handler.
 default_panic_handler!();
 
 #[inline(always)]
 fn process_instruction(
-    _program_id: &Pubkey,
-    accounts: &[AccountInfo],
+    _program_id: &Address,
+    accounts: &mut [AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
     let (ix_disc, instruction_data) = instruction_data
@@ -52,7 +50,7 @@ fn process_instruction(
 
     match ProgramInstruction::try_from(ix_disc)? {
         ProgramInstruction::InitializeState => {
-            msg!("initialize");
+            log!("initialize");
             instructions::initialize(accounts, instruction_data)
         }
     }
@@ -114,7 +112,7 @@ wallet = "~/.config/solana/id.json"
 }
 
 pub fn errors_rs() -> &'static str {
-    r#"use pinocchio::program_error::ProgramError;
+    r#"use pinocchio::error::ProgramError;
 
 #[derive(Clone, PartialEq, shank::ShankType)]
 pub enum MyProgramError {
@@ -142,17 +140,16 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-pinocchio = "0.8.4"
-pinocchio-log = "0.4.0"
-pinocchio-pubkey = "0.2.4"
-pinocchio-system = "0.2.3"
-shank = "0.4.2"
+pinocchio = "0.11.2"
+pinocchio-log = "0.5.1"
+pinocchio-system = "0.6.1"
+shank = "0.4.8"
 
 [dev-dependencies]
-solana-sdk = "2.3.0"
-solana-program-runtime = "=2.3.1"
-mollusk-svm = "0.3.0"
-mollusk-svm-bencher = "0.3.0" 
+solana-sdk = "4.0.1"
+solana-program-runtime = "4.1.2"
+mollusk-svm = "0.14.0"
+mollusk-svm-bencher = "0.14.0"
 
 [features]
 no-entrypoint = []

@@ -9,21 +9,21 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-pinocchio = "0.8.4"
-pinocchio-pubkey = "0.2.4"
+pinocchio = "0.11.2"
+solana-address = {{ version = "2.6.1", features = ["decode"] }}
 "#,
         project_name
     )
 }
 
 pub fn lib_rs(program_address: &str) -> String {
-    let template = r#"use pinocchio::{account_info::AccountInfo, pubkey::Pubkey, ProgramResult};
+    let template = r#"use pinocchio::{AccountView, Address, ProgramResult};
 
-pinocchio_pubkey::declare_id!("{program_address}");
+pub const ID: Address = Address::from_str_const("{program_address}");
 
 pub fn process_instruction(
-    _program_id: &Pubkey,
-    _accounts: &[AccountInfo],
+    _program_id: &Address,
+    _accounts: &mut [AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
     // Your program logic here

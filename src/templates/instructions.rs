@@ -1,12 +1,10 @@
 
 pub fn initialize() -> &'static str {
     r#"use pinocchio::{
-    account_info::AccountInfo,
-    instruction::{Seed, Signer},
-    program_error::ProgramError,
-    pubkey::Pubkey,
+    cpi::{Seed, Signer},
+    error::ProgramError,
     sysvars::rent::Rent,
-    ProgramResult,
+    Address, AccountView, ProgramResult,
 };
 
 use pinocchio_system::instructions::CreateAccount;
@@ -22,7 +20,7 @@ use crate::{
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Initialize {
-    pub owner: Pubkey,
+    pub owner: Address,
     pub bump: u8,
 }
 
@@ -30,7 +28,7 @@ impl DataLen for Initialize {
     const LEN: usize = core::mem::size_of::<Initialize>();
 }
 
-pub fn initialize(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
+pub fn initialize(accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
     let [payer_acc, state_acc, sysvar_rent_acc, _system_program] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
@@ -39,26 +37,25 @@ pub fn initialize(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    if !state_acc.data_is_empty() {
+    if !state_acc.is_data_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    let rent = Rent::from_account_info(sysvar_rent_acc)?;
+    let rent = Rent::from_account_view(sysvar_rent_acc)?;
 
     let ix_data = unsafe { load_ix_data::<Initialize>(data)? };
 
-    if ix_data.owner.ne(payer_acc.key()) {
+    if ix_data.owner.ne(payer_acc.address()) {
         return Err(MyProgramError::InvalidOwner.into());
     }
 
     let pda_bump_bytes = [ix_data.bump];
 
-    MyState::validate_pda(ix_data.bump, state_acc.key(), &ix_data.owner)?;
+    MyState::validate_pda(ix_data.bump, state_acc.address(), &ix_data.owner)?;
 
-    // signer seeds
     let signer_seeds = [
         Seed::from(MyState::SEED.as_bytes()),
-        Seed::from(&ix_data.owner),
+        Seed::from(ix_data.owner.as_array()),
         Seed::from(&pda_bump_bytes[..]),
     ];
     let signers = [Signer::from(&signer_seeds[..])];
@@ -68,7 +65,7 @@ pub fn initialize(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
         to: state_acc,
         space: MyState::LEN as u64,
         owner: &crate::ID,
-        lamports: rent.minimum_balance(MyState::LEN),
+        lamports: rent.try_minimum_balance(MyState::LEN)?,
     }
     .invoke_signed(&signers)?;
 
@@ -79,7 +76,7 @@ pub fn initialize(accounts: &[AccountInfo], data: &[u8]) -> ProgramResult {
 }
 
 pub fn instructions_mod_rs() -> &'static str {
-    r#"use pinocchio::program_error::ProgramError;
+    r#"use pinocchio::error::ProgramError;
 
 pub mod initialize;
 

@@ -13,7 +13,7 @@ use alloc::vec;
 use {project_name}::instructions::Initialize;
 use {project_name}::states::{to_bytes, MyState};
 use solana_sdk::rent::Rent;
-use solana_sdk::sysvar::Sysvar;
+use solana_sdk::sysvar::SysvarSerialize;
 
 pub const PROGRAM: Pubkey = pubkey!("{program_address}");
 
@@ -61,7 +61,7 @@ fn test_initialize_mystate() {
 
     // Create the instruction data
     let ix_data = Initialize {
-        owner: *PAYER.as_array(),
+        owner: (*PAYER.as_array()).into(),
         bump,
     };
 

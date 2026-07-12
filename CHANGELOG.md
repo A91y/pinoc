@@ -5,6 +5,13 @@ All notable changes to the `pinoc` CLI tool will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Bumped generated project dependencies to latest stable: `pinocchio` 0.8.4 → 0.11.2, `pinocchio-log` 0.4.0 → 0.5.1, `pinocchio-system` 0.2.3 → 0.6.1, `shank` 0.4.2 → 0.4.8, `solana-sdk` 2.3.0 → 4.0.1, `solana-program-runtime` 2.3.1 → 4.1.2, `mollusk-svm`/`mollusk-svm-bencher` 0.3.0 → 0.14.0.
+- Dropped `pinocchio-pubkey` from generated projects: it hasn't been updated since pinocchio 0.9 and no longer matches pinocchio's `Address` API. Program IDs are now declared with `Address::from_str_const` directly.
+- Updated all scaffold templates for pinocchio 0.11's API: `AccountInfo` → `AccountView`, `Pubkey` → `Address`, `.key()` → `.address()`, `.data_is_empty()` → `.is_data_empty()`, `pinocchio::program_error` → `pinocchio::error`, `msg!` → `pinocchio_log::log!`, `Rent::from_account_info` → `Rent::from_account_view`, `Rent::minimum_balance` → `Rent::try_minimum_balance`.
+
 ## [0.1.7] - 2026-07-13
 
 ### Added
