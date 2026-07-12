@@ -14,7 +14,7 @@ use pinocchio::{error::ProgramError, Address, AccountView, ProgramResult};
 use crate::{errors::MyProgramError, instructions::Initialize};
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, shank::ShankAccount)]
 pub struct MyState {
     pub owner: Address,
 }

@@ -70,6 +70,10 @@ enum Commands {
         #[command(subcommand)]
         command: KeyCommands,
     },
+    Idl {
+        #[arg(long, help = "Output directory for the IDL JSON", default_value = "idl")]
+        out_dir: String,
+    },
     #[command(name = "--help")]
     Help,
 }
@@ -197,6 +201,9 @@ fn main() -> Result<()> {
                 sync_program_keys()?;
             }
         },
+        Commands::Idl { out_dir } => {
+            generate_idl(out_dir)?;
+        }
         Commands::Help => {
             display_help_banner()?;
         }
@@ -231,6 +238,7 @@ fn display_help_banner() -> Result<()> {
     println!("   pinoc search [query]      - Search for pinocchio packages on crates.io");
     println!("   pinoc keys list           - List program keypairs");
     println!("   pinoc keys sync           - Sync program ID with keypair");
+    println!("   pinoc idl [--out-dir]     - Generate an IDL JSON via shank-cli");
 
     Ok(())
 }
@@ -902,6 +910,42 @@ fn read_pinoc_config() -> Result<PinocConfig> {
         toml::from_str(&config_content).with_context(|| "Failed to parse Pinoc.toml")?;
 
     Ok(config)
+}
+
+fn generate_idl(out_dir: &str) -> Result<()> {
+    println!("🧩 Generating IDL...");
+
+    let crate_root = std::env::current_dir().with_context(|| "Failed to read current directory")?;
+    let cargo_toml = crate_root.join("Cargo.toml");
+    if !cargo_toml.exists() {
+        anyhow::bail!("Cargo.toml not found. Please run this command from the project root.");
+    }
+
+    let manifest = shank_idl::manifest::Manifest::from_path(&cargo_toml)
+        .with_context(|| "Failed to read Cargo.toml")?;
+    let lib_rel_path = manifest
+        .lib_rel_path()
+        .ok_or_else(|| anyhow::anyhow!("Cargo.toml does not declare a [lib] target"))?;
+    let lib_path = crate_root.join(lib_rel_path);
+    let lib_path_str = lib_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid path: {}", lib_path.display()))?;
+
+    let idl = shank_idl::extract_idl(lib_path_str, shank_idl::ParseIdlOpts::default())
+        .with_context(|| "Failed to extract IDL from program source")?
+        .ok_or_else(|| anyhow::anyhow!("No IDL could be extracted from this program"))?;
+    let idl_json = idl
+        .try_into_json()
+        .with_context(|| "Failed to serialize IDL to JSON")?;
+
+    let out_path = Path::new(out_dir);
+    fs::create_dir_all(out_path)
+        .with_context(|| format!("Failed to create output directory: {}", out_dir))?;
+    let idl_file = out_path.join(format!("{}.json", manifest.lib_name()?));
+    fs::write(&idl_file, idl_json).with_context(|| format!("Failed to write {}", idl_file.display()))?;
+
+    println!("✅ IDL written to {}", idl_file.display());
+    Ok(())
 }
 
 fn expand_tilde(path: &str) -> Result<String> {

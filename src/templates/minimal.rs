@@ -19,7 +19,7 @@ solana-address = {{ version = "2.6.1", features = ["decode"] }}
 pub fn lib_rs(program_address: &str) -> String {
     let template = r#"use pinocchio::{AccountView, Address, ProgramResult};
 
-pub const ID: Address = Address::from_str_const("{program_address}");
+pinocchio::address::declare_id!("{program_address}");
 
 pub fn process_instruction(
     _program_id: &Address,

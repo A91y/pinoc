@@ -18,7 +18,7 @@ pub mod errors;
 pub mod instructions;
 pub mod states;
 
-pub const ID: pinocchio::Address = pinocchio::Address::from_str_const("{}");"#,
+pinocchio::address::declare_id!("{}");"#,
         address
     )
 }
@@ -113,11 +113,15 @@ wallet = "~/.config/solana/id.json"
 
 pub fn errors_rs() -> &'static str {
     r#"use pinocchio::error::ProgramError;
+use thiserror::Error;
 
-#[derive(Clone, PartialEq, shank::ShankType)]
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
 pub enum MyProgramError {
+    #[error("Invalid instruction data")]
     InvalidInstructionData,
+    #[error("PDA does not match expected derivation")]
     PdaMismatch,
+    #[error("Owner does not match expected authority")]
     InvalidOwner,
 }
 
@@ -125,7 +129,7 @@ impl From<MyProgramError> for ProgramError {
     fn from(e: MyProgramError) -> Self {
         Self::Custom(e as u32)
     }
-}       
+}
 "#
 }
 
@@ -144,6 +148,7 @@ pinocchio = "0.11.2"
 pinocchio-log = "0.5.1"
 pinocchio-system = "0.6.1"
 shank = "0.4.8"
+thiserror = {{ version = "2.0", default-features = false }}
 
 [dev-dependencies]
 solana-sdk = "4.0.1"

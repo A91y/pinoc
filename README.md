@@ -109,6 +109,7 @@ That's it! You now have a fully functional Solana program ready for development.
 | `pinoc search [query]` | Search packages       | `pinoc search database`         |
 | `pinoc keys list`      | List program keypairs | `pinoc keys list`               |
 | `pinoc keys sync`      | Sync program IDs      | `pinoc keys sync`               |
+| `pinoc idl`            | Generate an IDL JSON  | `pinoc idl --out-dir idl`       |
 | `pinoc help`           | Show help             | `pinoc help`                    |
 
 ### Command Options
@@ -213,6 +214,17 @@ pinoc clean
 # Clean everything including keypairs
 pinoc clean --no-preserve
 ```
+
+### IDL Generation
+
+Generate an Anchor-style IDL JSON describing your program's instructions, accounts, types, and errors, powered by [shank](https://github.com/metaplex-foundation/shank) (built into `pinoc`, no separate install needed):
+
+```bash
+pinoc idl
+pinoc idl --out-dir custom_idl_dir
+```
+
+The `--with-example` project's instructions and accounts are already annotated so `pinoc idl` works out of the box.
 
 ## 🔗 Prerequisites
 

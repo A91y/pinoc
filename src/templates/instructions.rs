@@ -18,7 +18,7 @@ use crate::{
 };
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, shank::ShankType)]
 pub struct Initialize {
     pub owner: Address,
     pub bump: u8,
@@ -96,5 +96,17 @@ impl TryFrom<&u8> for ProgramInstruction {
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
+}
+
+/// IDL-only mirror of `ProgramInstruction`, read by `shank idl` (via `pinoc idl`) to describe
+/// each instruction's accounts and args. Never constructed at runtime.
+#[derive(shank::ShankInstruction)]
+#[allow(dead_code)]
+enum ProgramInstructions {
+    #[account(0, writable, signer, name = "payer", desc = "Account paying for the new state account")]
+    #[account(1, writable, name = "state", desc = "State PDA to be created")]
+    #[account(2, name = "rent", desc = "Rent sysvar")]
+    #[account(3, name = "system_program", desc = "System program")]
+    InitializeState(Initialize),
 }"#
 }

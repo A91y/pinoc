@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `pinoc idl [--out-dir]`: generates an Anchor-style IDL JSON (instructions, accounts, types, errors) using [shank](https://github.com/metaplex-foundation/shank)'s `shank_idl` crate directly, compiled into `pinoc` itself — no separate `shank-cli` install required. The `--with-example` template's instructions/accounts/errors are annotated with `shank`'s derive macros so `pinoc idl` works immediately.
+
 ### Changed
 - **Breaking**: `pinoc init` now generates the minimal no-op program by default (previously behind `--no-boilerplate`). The full PDA-account example is now opt-in via `--with-example` (replaces `--no-boilerplate`, which is removed).
-- Bumped generated project dependencies to latest stable: `pinocchio` 0.8.4 → 0.11.2, `pinocchio-log` 0.4.0 → 0.5.1, `pinocchio-system` 0.2.3 → 0.6.1, `shank` 0.4.2 → 0.4.8, `solana-sdk` 2.3.0 → 4.0.1, `solana-program-runtime` 2.3.1 → 4.1.2, `mollusk-svm`/`mollusk-svm-bencher` 0.3.0 → 0.14.0.
-- Dropped `pinocchio-pubkey` from generated projects: it hasn't been updated since pinocchio 0.9 and no longer matches pinocchio's `Address` API. Program IDs are now declared with `Address::from_str_const` directly.
+- Bumped generated project dependencies to latest stable: `pinocchio` 0.8.4 → 0.11.2, `pinocchio-log` 0.4.0 → 0.5.1, `pinocchio-system` 0.2.3 → 0.6.1, `shank` 0.4.2 → 0.4.8, `solana-sdk` 2.3.0 → 4.0.1, `solana-program-runtime` 2.3.1 → 4.1.2, `mollusk-svm`/`mollusk-svm-bencher` 0.3.0 → 0.14.0. Added `thiserror` (needed for `shank`'s error-IDL convention).
+- Dropped `pinocchio-pubkey` from generated projects: it hasn't been updated since pinocchio 0.9 and no longer matches pinocchio's `Address` API. Program IDs are now declared with `pinocchio::address::declare_id!` (`solana-address`'s own macro, re-exported through pinocchio), matching the Solana Foundation's own Pinocchio template.
 - Updated all scaffold templates for pinocchio 0.11's API: `AccountInfo` → `AccountView`, `Pubkey` → `Address`, `.key()` → `.address()`, `.data_is_empty()` → `.is_data_empty()`, `pinocchio::program_error` → `pinocchio::error`, `msg!` → `pinocchio_log::log!`, `Rent::from_account_info` → `Rent::from_account_view`, `Rent::minimum_balance` → `Rent::try_minimum_balance`.
 
 ## [0.1.7] - 2026-07-13
