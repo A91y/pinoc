@@ -131,8 +131,12 @@ fn main() -> Result<()> {
                 generator,
                 auto_install,
                 yes,
+                with_cpi,
+                no_cpi,
             } => {
-                commands::client::generate_client(idl_dir, out_dir, *generator, *auto_install, *yes)?;
+                commands::client::generate_client(
+                    idl_dir, out_dir, *generator, *auto_install, *yes, *with_cpi, *no_cpi,
+                )?;
             }
         },
         Commands::Config { command } => match command {

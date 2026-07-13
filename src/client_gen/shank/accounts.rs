@@ -5,6 +5,7 @@ use shank_idl::idl_type_definition::{IdlTypeDefinition, IdlTypeDefinitionTy};
 
 pub fn account_rs(account: &IdlTypeDefinition) -> Result<String> {
     let name = account.name.to_pascal_case();
+    let snake_name = account.name.to_snake_case();
     let fields = match &account.ty {
         IdlTypeDefinitionTy::Struct { fields } => fields,
         IdlTypeDefinitionTy::Enum { .. } => {
@@ -37,6 +38,72 @@ impl {name} {{
     pub fn to_bytes(&self) -> std::io::Result<Vec<u8>> {{
         borsh::to_vec(self)
     }}
+}}
+
+#[cfg(feature = "fetch")]
+pub fn fetch_{snake_name}(
+    rpc: &solana_rpc_client::rpc_client::RpcClient,
+    address: &solana_address::Address,
+) -> Result<crate::shared::DecodedAccount<{name}>, std::io::Error> {{
+    let accounts = fetch_all_{snake_name}(rpc, &[*address])?;
+    Ok(accounts[0].clone())
+}}
+
+#[cfg(feature = "fetch")]
+pub fn fetch_all_{snake_name}(
+    rpc: &solana_rpc_client::rpc_client::RpcClient,
+    addresses: &[solana_address::Address],
+) -> Result<Vec<crate::shared::DecodedAccount<{name}>>, std::io::Error> {{
+    let accounts = rpc
+        .get_multiple_accounts(addresses)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let mut decoded_accounts = Vec::new();
+    for (i, address) in addresses.iter().enumerate() {{
+        let account = accounts[i]
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other(format!("Account not found: {{address}}")))?;
+        let data = {name}::from_bytes(&account.data)?;
+        decoded_accounts.push(crate::shared::DecodedAccount {{
+            address: *address,
+            account: account.clone(),
+            data,
+        }});
+    }}
+    Ok(decoded_accounts)
+}}
+
+#[cfg(feature = "fetch")]
+pub fn fetch_maybe_{snake_name}(
+    rpc: &solana_rpc_client::rpc_client::RpcClient,
+    address: &solana_address::Address,
+) -> Result<crate::shared::MaybeAccount<{name}>, std::io::Error> {{
+    let accounts = fetch_all_maybe_{snake_name}(rpc, &[*address])?;
+    Ok(accounts[0].clone())
+}}
+
+#[cfg(feature = "fetch")]
+pub fn fetch_all_maybe_{snake_name}(
+    rpc: &solana_rpc_client::rpc_client::RpcClient,
+    addresses: &[solana_address::Address],
+) -> Result<Vec<crate::shared::MaybeAccount<{name}>>, std::io::Error> {{
+    let accounts = rpc
+        .get_multiple_accounts(addresses)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let mut decoded_accounts = Vec::new();
+    for (i, address) in addresses.iter().enumerate() {{
+        decoded_accounts.push(match accounts[i].as_ref() {{
+            Some(account) => {{
+                let data = {name}::from_bytes(&account.data)?;
+                crate::shared::MaybeAccount::Exists(crate::shared::DecodedAccount {{
+                    address: *address,
+                    account: account.clone(),
+                    data,
+                }})
+            }}
+            None => crate::shared::MaybeAccount::NotFound(*address),
+        }});
+    }}
+    Ok(decoded_accounts)
 }}
 "#
     ))

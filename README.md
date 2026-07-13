@@ -269,8 +269,17 @@ CLI flag wins over `Pinoc.toml`, which wins over auto-detection.
 
 `pinoc client generate` writes a small, standalone Rust client crate to `clients/rust/`. Two generators are available:
 
-- **`shank`** (default) — pure Rust, built into `pinoc`, no Node.js/npm required. Reads `target/idl/<name>.json`. Borsh-based instruction builders, account (de)serialization, `declare_id!` matching your program's address. Styled after Codama's Rust renderer conventions, though not literally Codama's own renderer output.
-- **`codama`** — shells out to the real [Codama](https://github.com/codama-idl/codama) JS pipeline (`@codama/nodes-from-anchor` + `@codama/renderers-rust`) for richer output: CPI helper variants and `fetch_*` RPC helpers that the `shank` generator doesn't produce. Reads `target/idl/<name>.codama.json`. Requires Node.js/npm.
+- **`shank`** (recommended unless Codama macros are detected, see below) — pure Rust, built into `pinoc`, no Node.js/npm required. Reads `target/idl/<name>.json`. Borsh-based instruction builders, account (de)serialization, `declare_id!` matching your program's address, plus CPI variants and `fetch_*` RPC helpers (see below). Styled after Codama's Rust renderer conventions, though not literally Codama's own renderer output.
+- **`codama`** — shells out to the real [Codama](https://github.com/codama-idl/codama) JS pipeline (`@codama/nodes-from-anchor` + `@codama/renderers-rust`). Reads `target/idl/<name>.codama.json`. Requires Node.js/npm.
+
+**CPI variants**: `pinoc client generate` scans your program's own source for `invoke`/`invoke_signed` call sites and, if found, adds `XxxCpi`/`XxxCpiAccounts`/`XxxCpiBuilder` for each instruction (for calling this program from another program via cross-program invocation), plus the 3 extra dependencies they need (`solana-account-info`, `solana-cpi`, `solana-program-error`). Override the detection:
+
+```bash
+pinoc client generate --with-cpi   # force CPI variants even if not detected
+pinoc client generate --no-cpi     # never generate them, regardless of detection
+```
+
+**`fetch_*` RPC helpers**: always generated (`fetch_x`/`fetch_all_x`/`fetch_maybe_x`/`fetch_all_maybe_x` per account), but gated behind a `fetch` Cargo feature in the generated client so `solana-rpc-client`/`solana-account` are only pulled in when you actually opt in: `cargo build --features fetch` in the generated client crate.
 
 ```bash
 pinoc client generate                              # prompts to choose shank/codama if run interactively
@@ -281,7 +290,7 @@ pinoc client generate --out-dir clients/rust --idl-dir target/idl
 
 If you pick `codama` and its npm dependencies (managed in a project-local `clients/rust/.pinoc-codama/`, isolated from anything else) aren't installed yet, `pinoc` stops and shows the exact `npm install` command to run — it won't install anything without your say-so unless you pass `--auto-install`. If Node.js itself isn't found, it prints a quick-install pointer instead. `.pinoc-codama/` is added to your project's `.gitignore` automatically (a new one is only created if the project is a git repo).
 
-`pinoc client generate` uses the same Codama-macro detection as `pinoc idl` to recommend a generator: when run interactively without `--generator`, the prompt's default flips to whichever was detected. If you pass `--generator` explicitly and it contradicts detection (e.g. `--generator shank` on a program with Codama macros), you'll be asked to confirm — skip that with `-y`/`--yes`. Non-interactively (no TTY) without `-y`, it refuses and tells you to add the flag rather than guessing.
+`pinoc client generate` uses the same Codama-macro detection as `pinoc idl` to recommend a generator: `codama` if your program has Codama macros, `shank` otherwise. When run interactively without `--generator`, the prompt marks whichever one is recommended and that's what bare Enter picks. If you pass `--generator` explicitly and it contradicts the recommendation (e.g. `--generator shank` on a program with Codama macros), you'll be asked to confirm; skip that with `-y`/`--yes`. Non-interactively (no TTY) without `-y`, it refuses and tells you to add the flag rather than guessing.
 
 Run `pinoc build` (or `pinoc idl`) first so the IDL exists. The generated crate is standalone — `cd clients/rust && cargo build` — and not part of the program's own Cargo workspace.
 

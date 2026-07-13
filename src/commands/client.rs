@@ -17,6 +17,10 @@ pub enum ClientCommands {
         auto_install: bool,
         #[arg(short = 'y', long = "yes", help = "Skip the confirmation prompt when --generator contradicts detected Codama macros")]
         yes: bool,
+        #[arg(long, help = "Force CPI variant generation (XxxCpi/XxxCpiBuilder) in the shank generator, skipping auto-detection", conflicts_with = "no_cpi")]
+        with_cpi: bool,
+        #[arg(long, help = "Never generate CPI variants in the shank generator, regardless of auto-detection", conflicts_with = "with_cpi")]
+        no_cpi: bool,
     },
 }
 
@@ -26,6 +30,8 @@ pub fn generate_client(
     generator: Option<Generator>,
     auto_install: bool,
     yes: bool,
+    with_cpi: bool,
+    no_cpi: bool,
 ) -> Result<()> {
     let crate_root = std::env::current_dir().with_context(|| "Failed to read current directory")?;
     let cargo_toml = crate_root.join("Cargo.toml");
@@ -67,7 +73,20 @@ pub fn generate_client(
                     idl_path.display()
                 );
             }
-            client_gen::shank::generate_rust_client(&idl_path, Path::new(out_dir))
+
+            let generate_cpi = if no_cpi {
+                false
+            } else if with_cpi {
+                true
+            } else {
+                client_gen::shank::cpi::cpi_usage_detected(&src_dir)?
+            };
+            if generate_cpi {
+                let reason = if with_cpi { "forced via --with-cpi" } else { "detected invoke()/invoke_signed() usage in program source" };
+                println!("🔌 CPI variants: generating ({reason})");
+            }
+
+            client_gen::shank::generate_rust_client(&idl_path, Path::new(out_dir), generate_cpi)
                 .with_context(|| "Failed to generate Rust client")?;
             println!("✅ Rust client written to {out_dir}/");
         }
@@ -112,34 +131,36 @@ fn confirm_contradicting_choice(chosen: Generator) -> Result<()> {
 }
 
 fn prompt_for_generator(detected_codama: bool) -> Generator {
-    let default = if detected_codama { Generator::Codama } else { Generator::Shank };
+    let recommended = if detected_codama { Generator::Codama } else { Generator::Shank };
 
     if !std::io::stdin().is_terminal() {
-        return default;
+        return recommended;
     }
 
     if detected_codama {
-        println!("ℹ️  Codama macros detected in this program; recommending codama as the default.");
+        println!("ℹ️  Codama macros detected in this program; recommending codama.");
+    } else {
+        println!("ℹ️  No Codama macros detected in this program; recommending shank.");
     }
     println!("Which client generator would you like to use?");
     println!(
         "  1) shank  - built into pinoc, no setup required{}",
-        if detected_codama { "" } else { " (default)" }
+        if detected_codama { "" } else { " (recommended)" }
     );
     println!(
         "  2) codama - Node.js-based, richer output (CPI helpers, RPC fetch helpers){}",
-        if detected_codama { " (default)" } else { "" }
+        if detected_codama { " (recommended)" } else { "" }
     );
     print!("Choice [{}]: ", if detected_codama { "2" } else { "1" });
     let _ = std::io::stdout().flush();
 
     let mut input = String::new();
     if std::io::stdin().read_line(&mut input).is_err() {
-        return default;
+        return recommended;
     }
     match input.trim() {
         "1" | "shank" => Generator::Shank,
         "2" | "codama" => Generator::Codama,
-        _ => default,
+        _ => recommended,
     }
 }
