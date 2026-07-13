@@ -110,6 +110,7 @@ That's it! You now have a fully functional Solana program ready for development.
 | `pinoc keys list`      | List program keypairs | `pinoc keys list`               |
 | `pinoc keys sync`      | Sync program IDs      | `pinoc keys sync`               |
 | `pinoc idl`            | Regenerate the IDL JSON | `pinoc idl --out-dir target/idl` |
+| `pinoc client generate` | Generate a Rust client from the IDL | `pinoc client generate` |
 | `pinoc help`           | Show help             | `pinoc help`                    |
 
 ### Command Options
@@ -217,9 +218,12 @@ pinoc clean --no-preserve
 
 ### IDL Generation
 
-`pinoc build` automatically (re)generates an Anchor-style IDL JSON at `target/idl/<project_name>.json`, describing your program's instructions, accounts, types, and errors — powered by [shank](https://github.com/metaplex-foundation/shank), built into `pinoc` itself (no separate install needed). A failed IDL extraction only prints a warning; it never fails the build.
+`pinoc build` automatically (re)generates two IDL files at `target/idl/`, describing your program's instructions, accounts, types, and errors — powered by [shank](https://github.com/metaplex-foundation/shank), built into `pinoc` itself (no separate install needed). A failed IDL extraction only prints a warning; it never fails the build.
 
-You can also regenerate it on its own:
+- `<project_name>.json` — shank's native IDL, exactly as extracted. This is what `pinoc client generate` reads.
+- `<project_name>.codama.json` — the same IDL with pubkey-typed fields rewritten from shank's `{"defined": "Address"}` to the standard `"publicKey"` IDL type. Use this one if you want to feed the IDL into a real [Codama](https://github.com/codama-idl/codama) (Node.js) pipeline yourself — shank's native representation trips a bug in `@codama/nodes-from-anchor`'s conversion (see [docs/codama-comparison.md](docs/codama-comparison.md)); this file sidesteps it.
+
+You can also regenerate both on their own:
 
 ```bash
 pinoc idl
@@ -227,6 +231,24 @@ pinoc idl --out-dir custom_idl_dir
 ```
 
 The `--with-example` project's instructions and accounts are already annotated so `pinoc idl` works out of the box.
+
+### Client Generation
+
+`pinoc client generate` writes a small, standalone Rust client crate to `clients/rust/`. Two generators are available:
+
+- **`shank`** (default) — pure Rust, built into `pinoc`, no Node.js/npm required. Reads `target/idl/<name>.json`. Borsh-based instruction builders, account (de)serialization, `declare_id!` matching your program's address. Styled after Codama's Rust renderer conventions, though not literally Codama's own renderer output.
+- **`codama`** — shells out to the real [Codama](https://github.com/codama-idl/codama) JS pipeline (`@codama/nodes-from-anchor` + `@codama/renderers-rust`) for richer output: CPI helper variants and `fetch_*` RPC helpers that the `shank` generator doesn't produce. Reads `target/idl/<name>.codama.json`. Requires Node.js/npm.
+
+```bash
+pinoc client generate                              # prompts to choose shank/codama if run interactively
+pinoc client generate --generator shank
+pinoc client generate --generator codama --auto-install   # installs codama's npm deps on first run
+pinoc client generate --out-dir clients/rust --idl-dir target/idl
+```
+
+If you pick `codama` and its npm dependencies (managed in a project-local `clients/rust/.pinoc-codama/`, isolated from anything else) aren't installed yet, `pinoc` stops and shows the exact `npm install` command to run — it won't install anything without your say-so unless you pass `--auto-install`. If Node.js itself isn't found, it prints a quick-install pointer instead.
+
+Run `pinoc build` (or `pinoc idl`) first so the IDL exists. The generated crate is standalone — `cd clients/rust && cargo build` — and not part of the program's own Cargo workspace.
 
 ## 🔗 Prerequisites
 
