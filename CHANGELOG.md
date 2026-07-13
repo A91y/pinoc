@@ -38,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--idl-generator shank` on a program that actually has Codama macros used to print "no Codama macros detected" (misleading — they were detected, just overridden). Now correctly says the choice was forced.
 - `[idl].generator` in `Pinoc.toml` was case-sensitive (`"Auto"`/`"Shank"` errored instead of working) while the equivalent `--idl-generator` CLI flag wasn't. Now matched case-insensitively like the flag.
 - Forcing `--idl-generator codama`/`[idl].generator = "codama"` on a program with no Codama macros silently wrote a completely empty `.codama.json` with exit code 0. Now prints a warning when the extracted program has zero instructions, accounts, and errors.
+- `pinoc build`'s "Skipped IDL generation" hint always suggested `--program-id`, even for unrelated failures (e.g. an invalid `[idl].generator` value in `Pinoc.toml`). Now only shown when actually relevant to the error, plus a matching hint for bad `[idl].generator` values.
+- `pinoc client generate --generator codama` failed to compile for any program with zero accounts (not just fully-empty ones — an instructions-only program would hit this too): the generated `lib.rs` unconditionally re-exported `generated::accounts::*`, but the real Codama renderer only emits `accounts/`, `instructions/`, or `types/` when that category actually has content. `lib.rs` generation is now built from what actually got rendered instead of a fixed template. Pre-existing bug, not something this session introduced; every prior test fixture happened to have at least one account so it never surfaced.
 
 ## [0.1.7] - 2026-07-13
 
