@@ -95,5 +95,22 @@ pub fn extract_native_codama_idl(crate_root: &Path, resolved_address: Option<&st
     if let Some(address) = resolved_address {
         value["program"]["publicKey"] = Value::String(address.to_string());
     }
+
+    // Codama::load() doesn't error on a crate with no Codama macros at all,
+    // it just returns an empty program, which is easy to mistake for success.
+    if program_is_empty(&value) {
+        println!("⚠️  Native Codama extraction found no instructions, accounts, or errors. Does this program actually use Codama's derive macros?");
+    }
+
     Ok(serde_json::to_string_pretty(&value)?)
+}
+
+fn program_is_empty(root: &Value) -> bool {
+    let is_empty_array = |key: &str| {
+        root["program"][key]
+            .as_array()
+            .map(|a| a.is_empty())
+            .unwrap_or(true)
+    };
+    is_empty_array("instructions") && is_empty_array("accounts") && is_empty_array("errors")
 }
