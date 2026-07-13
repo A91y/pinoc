@@ -2,10 +2,9 @@ use shank_idl::idl::Idl;
 use shank_idl::idl_type::IdlType;
 use shank_idl::idl_type_definition::IdlTypeDefinitionTy;
 
-/// Rewrites every `{"defined": "Address"}` type reference to the literal
-/// `"publicKey"` IDL type. Needed because `@codama/nodes-from-anchor` mishandles
-/// `Defined("Address")` (see docs/codama-comparison.md); pinoc's own generator
-/// doesn't need this since it already understands that convention directly.
+/// Rewrites `{"defined": "Address"}` and `{"defined": "publicKey"}` to the
+/// literal `"publicKey"` IDL type, since `@codama/nodes-from-anchor` mishandles
+/// both (see docs/codama-comparison.md).
 pub fn to_codama_compatible(idl: &Idl) -> Idl {
     let mut idl = idl.clone();
 
@@ -39,7 +38,9 @@ fn rewrite_type_definition(ty: &mut IdlTypeDefinitionTy) {
 
 fn rewrite_type(ty: &IdlType) -> IdlType {
     match ty {
-        IdlType::Defined(name) if name == "Address" => IdlType::PublicKey,
+        IdlType::Defined(name) if name == "Address" || name.eq_ignore_ascii_case("publicKey") => {
+            IdlType::PublicKey
+        }
         IdlType::Array(inner, size) => IdlType::Array(Box::new(rewrite_type(inner)), *size),
         IdlType::Vec(inner) => IdlType::Vec(Box::new(rewrite_type(inner))),
         IdlType::Option(inner) => IdlType::Option(Box::new(rewrite_type(inner))),

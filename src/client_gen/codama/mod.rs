@@ -45,6 +45,7 @@ pub fn generate_via_codama(idl_path: &Path, out_dir: &Path, auto_install: bool) 
         .with_context(|| format!("Failed to create {}", tooling_dir.display()))?;
     fs::write(tooling_dir.join("package.json"), PACKAGE_JSON)
         .with_context(|| "Failed to write package.json")?;
+    ensure_gitignored(".pinoc-codama/")?;
     let script_path = tooling_dir.join("convert_and_render.mjs");
     fs::write(&script_path, CONVERT_SCRIPT).with_context(|| "Failed to write conversion script")?;
 
@@ -52,7 +53,7 @@ pub fn generate_via_codama(idl_path: &Path, out_dir: &Path, auto_install: bool) 
         if !auto_install {
             anyhow::bail!(
                 "codama's npm dependencies aren't installed yet.\n\n\
-                 Install them with:\n  cd {} && npm install\n\n\
+                 Install them with:\n  npm install --prefix {}\n\n\
                  Or rerun with: pinoc client generate --generator codama --auto-install",
                 tooling_dir.display()
             );
@@ -93,6 +94,34 @@ pub fn generate_via_codama(idl_path: &Path, out_dir: &Path, auto_install: bool) 
     fs::write(src_dir.join("lib.rs"), LIB_RS)?;
 
     let _ = generated_dir; // created by the render script itself
+    Ok(())
+}
+
+/// Appends `pattern` to the project root's `.gitignore` if present, or creates
+/// one if `cwd` is a git repo (never creates one otherwise).
+fn ensure_gitignored(pattern: &str) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let gitignore_path = cwd.join(".gitignore");
+    let gitignore_exists = gitignore_path.exists();
+
+    if !gitignore_exists && !cwd.join(".git").exists() {
+        return Ok(());
+    }
+
+    let existing = fs::read_to_string(&gitignore_path).unwrap_or_default();
+    if existing.lines().any(|line| line.trim().trim_end_matches('/') == pattern.trim_end_matches('/')) {
+        return Ok(());
+    }
+
+    let mut updated = existing;
+    if !updated.is_empty() && !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    updated.push_str(pattern);
+    updated.push('\n');
+    fs::write(&gitignore_path, updated)
+        .with_context(|| format!("Failed to update {}", gitignore_path.display()))?;
+    println!("📝 Added {pattern} to .gitignore");
     Ok(())
 }
 

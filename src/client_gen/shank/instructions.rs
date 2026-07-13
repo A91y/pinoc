@@ -56,7 +56,9 @@ pub fn instruction_rs(ix: &IdlInstruction) -> Result<String> {
         .args
         .iter()
         .filter_map(|f| match &f.ty {
-            IdlType::Defined(name) if name != "Address" => Some(name.to_pascal_case()),
+            IdlType::Defined(name) if name != "Address" && !name.eq_ignore_ascii_case("publicKey") => {
+                Some(name.to_pascal_case())
+            }
             _ => None,
         })
         .collect();

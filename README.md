@@ -119,6 +119,7 @@ That's it! You now have a fully functional Solana program ready for development.
 - `pinoc init <name> --with-example` - Include a worked PDA-account example instead of a no-op program
 - `pinoc clean --no-preserve` - Clean everything including keypairs
 - `pinoc deploy --cluster <cluster> --wallet <path>` - Override deployment settings
+- `pinoc build --program-id <ADDRESS>` - Override the program address used in IDL generation, for programs that don't call `declare_id!`
 
 ## 📂 Project Structure
 
@@ -228,9 +229,13 @@ You can also regenerate both on their own:
 ```bash
 pinoc idl
 pinoc idl --out-dir custom_idl_dir
+pinoc idl --program-id <ADDRESS>          # for programs that don't call declare_id!
+pinoc build --program-id <ADDRESS>        # same override, for the automatic post-build IDL step
 ```
 
-The `--with-example` project's instructions and accounts are already annotated so `pinoc idl` works out of the box.
+The `--with-example` project's instructions and accounts are already annotated so `pinoc idl` works out of the box. Programs that declare their program ID via `Address::from_str_const` instead of `declare_id!` (a common pattern to avoid the extra `pinocchio-pubkey`/`decode`-feature dependency) need `--program-id` since shank can't find the address in the source otherwise — everything else about the program (instructions, accounts, errors) still needs shank's derive macros to show up in the IDL; `pinoc idl` doesn't infer them from unannotated code.
+
+Errors are the one exception: if your error enum doesn't derive `thiserror::Error` (all `shank_idl` recognizes on its own), `pinoc idl` falls back to detecting a plain enum with a manual `impl From<X> for ProgramError`, synthesizing each message from the variant name (`InvalidPda` -> "Invalid Pda").
 
 ### Client Generation
 
@@ -246,7 +251,7 @@ pinoc client generate --generator codama --auto-install   # installs codama's np
 pinoc client generate --out-dir clients/rust --idl-dir target/idl
 ```
 
-If you pick `codama` and its npm dependencies (managed in a project-local `clients/rust/.pinoc-codama/`, isolated from anything else) aren't installed yet, `pinoc` stops and shows the exact `npm install` command to run — it won't install anything without your say-so unless you pass `--auto-install`. If Node.js itself isn't found, it prints a quick-install pointer instead.
+If you pick `codama` and its npm dependencies (managed in a project-local `clients/rust/.pinoc-codama/`, isolated from anything else) aren't installed yet, `pinoc` stops and shows the exact `npm install` command to run — it won't install anything without your say-so unless you pass `--auto-install`. If Node.js itself isn't found, it prints a quick-install pointer instead. `.pinoc-codama/` is added to your project's `.gitignore` automatically (a new one is only created if the project is a git repo).
 
 Run `pinoc build` (or `pinoc idl`) first so the IDL exists. The generated crate is standalone — `cd clients/rust && cargo build` — and not part of the program's own Cargo workspace.
 

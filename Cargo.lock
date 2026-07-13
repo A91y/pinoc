@@ -272,6 +272,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shank_idl",
+ "syn 2.0.100",
  "toml 0.9.2",
 ]
 
