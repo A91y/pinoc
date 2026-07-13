@@ -1,5 +1,6 @@
-//! `Pinoc.toml` schema, shared by `deploy` (`[provider]`) and IDL generation
-//! (`[idl]`); not deploy-specific despite the name.
+//! `Pinoc.toml` schema, shared by `deploy` (`[provider]`), IDL generation
+//! (`[idl]`), and client generation (`[client]`); not deploy-specific despite
+//! the name.
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -11,6 +12,8 @@ pub struct PinocConfig {
     pub provider: ProviderConfig,
     #[serde(default)]
     pub idl: IdlConfig,
+    #[serde(default)]
+    pub client: ClientConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -24,6 +27,16 @@ pub struct IdlConfig {
     /// "auto" | "shank" | "codama"; absent or "auto" means auto-detect.
     #[serde(default)]
     pub generator: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ClientConfig {
+    #[serde(default)]
+    pub out_dir: Option<String>,
+    #[serde(default)]
+    pub shank_out_dir: Option<String>,
+    #[serde(default)]
+    pub codama_out_dir: Option<String>,
 }
 
 /// Returns `None` (never errors) if `Pinoc.toml` is missing, so callers can

@@ -1,4 +1,5 @@
 use crate::client_gen;
+use crate::config;
 use crate::idl::{codama_native, Generator};
 use anyhow::{Context, Result};
 use std::io::{IsTerminal, Write};
@@ -7,8 +8,8 @@ use std::path::Path;
 #[derive(clap::Subcommand)]
 pub enum ClientCommands {
     Generate {
-        #[arg(long, help = "Output directory for the generated Rust client", default_value = "clients/rust")]
-        out_dir: String,
+        #[arg(long, help = "Output directory for the generated Rust client [default: clients/rust-shank or clients/rust-codama, depending on the resolved generator, so both can coexist]")]
+        out_dir: Option<String>,
         #[arg(long, help = "Path to the IDL JSON", default_value = "target/idl")]
         idl_dir: String,
         #[arg(long, value_enum, help = "Which generator to use: shank (built-in, no setup) or codama (Node.js, richer output). Prompts interactively if omitted.")]
@@ -26,7 +27,7 @@ pub enum ClientCommands {
 
 pub fn generate_client(
     idl_dir: &str,
-    out_dir: &str,
+    out_dir: Option<&str>,
     generator: Option<Generator>,
     auto_install: bool,
     yes: bool,
@@ -62,6 +63,9 @@ pub fn generate_client(
         }
         None => prompt_for_generator(detected_codama),
     };
+
+    let out_dir = resolve_out_dir(out_dir, generator)?;
+    let out_dir = out_dir.as_str();
 
     match generator {
         Generator::Shank => {
@@ -106,6 +110,38 @@ pub fn generate_client(
     }
 
     Ok(())
+}
+
+/// Resolves the output directory: explicit `--out-dir` > `Pinoc.toml`'s
+/// per-generator `shank_out_dir`/`codama_out_dir` > `Pinoc.toml`'s shared
+/// `out_dir` (warns every time, since both generators would write there) >
+/// the dynamic per-generator default (`clients/rust-shank`/`clients/rust-codama`).
+fn resolve_out_dir(out_dir: Option<&str>, generator: Generator) -> Result<String> {
+    if let Some(explicit) = out_dir {
+        return Ok(explicit.to_string());
+    }
+
+    let client_config = config::read_pinoc_config_optional()?
+        .map(|c| c.client)
+        .unwrap_or_default();
+    let per_generator = match generator {
+        Generator::Shank => client_config.shank_out_dir,
+        Generator::Codama => client_config.codama_out_dir,
+    };
+    if let Some(dir) = per_generator {
+        return Ok(dir);
+    }
+    if let Some(shared) = client_config.out_dir {
+        println!(
+            "⚠️  Using [client].out_dir {shared:?} from Pinoc.toml, shared by both generators. Generating with the other one will overwrite this output."
+        );
+        return Ok(shared);
+    }
+
+    Ok(match generator {
+        Generator::Shank => "clients/rust-shank".to_string(),
+        Generator::Codama => "clients/rust-codama".to_string(),
+    })
 }
 
 /// Bails with `-y` guidance when non-interactive; otherwise asks for explicit

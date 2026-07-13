@@ -267,7 +267,7 @@ CLI flag wins over `Pinoc.toml`, which wins over auto-detection.
 
 ### Client Generation
 
-`pinoc client generate` writes a small, standalone Rust client crate to `clients/rust/`. Two generators are available:
+`pinoc client generate` writes a small, standalone Rust client crate to `clients/rust-shank/` or `clients/rust-codama/` (the default output directory depends on the resolved generator, so running both doesn't overwrite one with the other; override with `--out-dir`). Two generators are available:
 
 - **`shank`** (recommended unless Codama macros are detected, see below) — pure Rust, built into `pinoc`, no Node.js/npm required. Reads `target/idl/<name>.json`. Borsh-based instruction builders, account (de)serialization, `declare_id!` matching your program's address, plus CPI variants and `fetch_*` RPC helpers (see below). Styled after Codama's Rust renderer conventions, though not literally Codama's own renderer output.
 - **`codama`** — shells out to the real [Codama](https://github.com/codama-idl/codama) JS pipeline (`@codama/nodes-from-anchor` + `@codama/renderers-rust`). Reads `target/idl/<name>.codama.json`. Requires Node.js/npm.
@@ -285,14 +285,25 @@ pinoc client generate --no-cpi     # never generate them, regardless of detectio
 pinoc client generate                              # prompts to choose shank/codama if run interactively
 pinoc client generate --generator shank
 pinoc client generate --generator codama --auto-install   # installs codama's npm deps on first run
-pinoc client generate --out-dir clients/rust --idl-dir target/idl
+pinoc client generate --out-dir clients/rust --idl-dir target/idl   # custom path, shared by both if you want
 ```
 
-If you pick `codama` and its npm dependencies (managed in a project-local `clients/rust/.pinoc-codama/`, isolated from anything else) aren't installed yet, `pinoc` stops and shows the exact `npm install` command to run — it won't install anything without your say-so unless you pass `--auto-install`. If Node.js itself isn't found, it prints a quick-install pointer instead. `.pinoc-codama/` is added to your project's `.gitignore` automatically (a new one is only created if the project is a git repo).
+`--out-dir` can also be set persistently in `Pinoc.toml` (not added by default in scaffolded projects; only the `[provider]`/`[idl]` sections are):
+
+```toml
+[client]
+out_dir = "clients/rust"        # shared by both generators; using it prints a warning every time, since switching generators overwrites the other's output
+shank_out_dir = "clients/shank" # per-generator path, wins over the shared out_dir above
+codama_out_dir = "clients/codama"
+```
+
+Precedence: `--out-dir` (CLI) > `shank_out_dir`/`codama_out_dir` > `out_dir` (shared) > the dynamic default (`clients/rust-shank`/`clients/rust-codama`) if none of the above are set.
+
+If you pick `codama` and its npm dependencies (managed in a project-local `<out-dir>/.pinoc-codama/`, isolated from anything else) aren't installed yet, `pinoc` stops and shows the exact `npm install` command to run — it won't install anything without your say-so unless you pass `--auto-install`. If Node.js itself isn't found, it prints a quick-install pointer instead. `.pinoc-codama/` is added to your project's `.gitignore` automatically (a new one is only created if the project is a git repo).
 
 `pinoc client generate` uses the same Codama-macro detection as `pinoc idl` to recommend a generator: `codama` if your program has Codama macros, `shank` otherwise. When run interactively without `--generator`, the prompt marks whichever one is recommended and that's what bare Enter picks. If you pass `--generator` explicitly and it contradicts the recommendation (e.g. `--generator shank` on a program with Codama macros), you'll be asked to confirm; skip that with `-y`/`--yes`. Non-interactively (no TTY) without `-y`, it refuses and tells you to add the flag rather than guessing.
 
-Run `pinoc build` (or `pinoc idl`) first so the IDL exists. The generated crate is standalone — `cd clients/rust && cargo build` — and not part of the program's own Cargo workspace.
+Run `pinoc build` (or `pinoc idl`) first so the IDL exists. The generated crate is standalone — `cd clients/rust-shank && cargo build` (or `clients/rust-codama`) — and not part of the program's own Cargo workspace.
 
 ## 🔗 Prerequisites
 

@@ -135,7 +135,7 @@ fn main() -> Result<()> {
                 no_cpi,
             } => {
                 commands::client::generate_client(
-                    idl_dir, out_dir, *generator, *auto_install, *yes, *with_cpi, *no_cpi,
+                    idl_dir, out_dir.as_deref(), *generator, *auto_install, *yes, *with_cpi, *no_cpi,
                 )?;
             }
         },
