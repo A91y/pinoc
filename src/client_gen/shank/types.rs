@@ -18,10 +18,8 @@ pub fn idl_type_to_rust(ty: &IdlType) -> Result<String> {
         IdlType::Bool => "bool".to_string(),
         IdlType::String => "String".to_string(),
         IdlType::PublicKey => "solana_pubkey::Pubkey".to_string(),
-        // shank's `#[idl_type("publicKey")]` field override produces a
-        // `Defined("publicKey")` reference rather than the `IdlType::PublicKey`
-        // variant, and pinocchio's own `Address` type shows up as `Defined("Address")`
-        // since shank doesn't know it's a pubkey type. Both mean the same thing.
+        // `Defined("Address"/"publicKey")` are shank's two ways of saying "pubkey"
+        // when it doesn't recognize the type as the literal PublicKey variant.
         IdlType::Defined(name) if name == "Address" || name.eq_ignore_ascii_case("publicKey") => {
             "solana_pubkey::Pubkey".to_string()
         }

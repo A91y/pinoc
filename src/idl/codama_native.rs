@@ -87,10 +87,8 @@ fn item_has_codama_derive(item: &Item) -> bool {
     })
 }
 
-/// Runs Codama's own Rust extractor (`codama::Codama::load`) and injects
-/// `resolved_address` into the result, since Codama's `declare_id!` detection
-/// doesn't recognize Pinocchio's macro path and would otherwise leave the
-/// program address empty.
+/// Runs Codama's extractor and injects `resolved_address`, since Codama's own
+/// `declare_id!` detection doesn't recognize Pinocchio's macro path.
 pub fn extract_native_codama_idl(crate_root: &Path, resolved_address: Option<&str>) -> Result<String> {
     let json = codama::Codama::load(crate_root)?.get_json_idl()?;
     let mut value: Value = serde_json::from_str(&json)?;

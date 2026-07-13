@@ -1,3 +1,7 @@
+//! Shells out to the real Codama JS pipeline to render a Rust client. Node.js
+//! deps live in a project-local `<out_dir>/.pinoc-codama/`, installed only
+//! with explicit consent (`--auto-install`), never silently.
+
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;

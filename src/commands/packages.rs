@@ -81,6 +81,7 @@ pub fn search_packages(query: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// Parses `cargo search`'s line format: `name = "version"    # description`.
 fn parse_cargo_search_output(output: &str) -> Result<Vec<SearchResult>> {
     let mut packages = Vec::new();
 

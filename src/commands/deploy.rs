@@ -58,11 +58,9 @@ pub fn run_deploy(cluster: Option<&str>, wallet: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Resolves cluster/wallet defaults for whichever of `cluster`/`wallet` wasn't
-/// passed on the CLI: `Pinoc.toml`'s `[provider]` if it exists, else the
-/// Solana CLI's own config (`solana config get`), so `pinoc deploy` still
-/// works in a project with no `Pinoc.toml` at all. Skips both lookups
-/// entirely when the caller already supplied both flags.
+/// Falls back from `Pinoc.toml` to `solana config get` when the file is
+/// missing, so `pinoc deploy` works without it. Skips both lookups if the
+/// caller already passed both flags.
 fn resolve_defaults(cluster: Option<&str>, wallet: Option<&str>) -> Result<(String, String)> {
     if cluster.is_some() && wallet.is_some() {
         return Ok((String::new(), String::new()));

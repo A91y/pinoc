@@ -1,3 +1,6 @@
+//! `Pinoc.toml` schema, shared by `deploy` (`[provider]`) and IDL generation
+//! (`[idl]`); not deploy-specific despite the name.
+
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::fs;
@@ -23,10 +26,8 @@ pub struct IdlConfig {
     pub generator: Option<String>,
 }
 
-/// Returns `None` if `Pinoc.toml` is missing, rather than erroring — callers
-/// fall back to their own defaults (`solana config get` for deploy,
-/// auto-detection for IDL generation). Prints a one-line hint pointing at
-/// `pinoc config init` so the fallback path isn't a dead end.
+/// Returns `None` (never errors) if `Pinoc.toml` is missing, so callers can
+/// fall back to their own defaults; also prints a `pinoc config init` hint.
 pub fn read_pinoc_config_optional() -> Result<Option<PinocConfig>> {
     let config_path = Path::new("Pinoc.toml");
     if !config_path.exists() {

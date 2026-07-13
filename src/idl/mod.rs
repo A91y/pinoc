@@ -1,3 +1,9 @@
+//! IDL generation. Always extracts via `shank_idl` for the plain `<name>.json`
+//! and the error list (falling back to `manual_errors` if none are found).
+//! For `<name>.codama.json` specifically, forks between the `codama` shim
+//! (rewrites shank's output) and `codama_native` (Codama's own extractor),
+//! per `resolve_generator`'s CLI/Pinoc.toml/detection precedence.
+
 pub mod codama;
 pub mod codama_native;
 pub mod manual_errors;
@@ -91,11 +97,8 @@ pub fn generate_idl(out_dir: &str, program_id: Option<&str>, generator_override:
     Ok(())
 }
 
-/// Resolves which generator produces `.codama.json`: an explicit CLI override
-/// wins, then `[idl].generator` in `Pinoc.toml` (unless `"auto"`), then
-/// auto-detecting Codama macros in the program's own source. The returned
-/// `bool` is `true` when the choice was forced (CLI/Pinoc.toml), `false` when
-/// it came from detection, so callers can print an accurate reason.
+/// Resolves the `.codama.json` generator: CLI override > `Pinoc.toml` > macro
+/// detection. The returned `bool` is `true` when forced, `false` when detected.
 fn resolve_generator(
     generator_override: Option<Generator>,
     crate_root: &Path,
