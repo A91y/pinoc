@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `#[idl_type("publicKey")]` field overrides produced `{"defined": "publicKey"}` in the IDL rather than the literal `"publicKey"` type. This broke `pinoc client generate --generator shank` (emitted a reference to an undefined `PublicKey` type) and left those fields unrewritten in `.codama.json`. Both now treat `Defined("publicKey")` the same as `Defined("Address")`.
 - `--idl-generator shank` on a program that actually has Codama macros used to print "no Codama macros detected" (misleading — they were detected, just overridden). Now correctly says the choice was forced.
+- `[idl].generator` in `Pinoc.toml` was case-sensitive (`"Auto"`/`"Shank"` errored instead of working) while the equivalent `--idl-generator` CLI flag wasn't. Now matched case-insensitively like the flag.
+- Forcing `--idl-generator codama`/`[idl].generator = "codama"` on a program with no Codama macros silently wrote a completely empty `.codama.json` with exit code 0. Now prints a warning when the extracted program has zero instructions, accounts, and errors.
 
 ## [0.1.7] - 2026-07-13
 

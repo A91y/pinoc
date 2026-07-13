@@ -110,13 +110,13 @@ fn resolve_generator(
 
     let toml_choice = config::read_pinoc_config_optional()?
         .and_then(|c| c.idl.generator)
-        .filter(|s| s != "auto");
+        .filter(|s| !s.eq_ignore_ascii_case("auto"));
     if let Some(choice) = toml_choice {
-        return match choice.as_str() {
+        return match choice.to_ascii_lowercase().as_str() {
             "codama" => Ok((Generator::Codama, true)),
             "shank" => Ok((Generator::Shank, true)),
-            other => anyhow::bail!(
-                "Invalid [idl].generator {other:?} in Pinoc.toml, expected \"auto\", \"shank\", or \"codama\""
+            _ => anyhow::bail!(
+                "Invalid [idl].generator {choice:?} in Pinoc.toml, expected \"auto\", \"shank\", or \"codama\""
             ),
         };
     }
