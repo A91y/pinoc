@@ -8,6 +8,7 @@ mod idl;
 mod templates;
 
 use commands::client::ClientCommands;
+use commands::config::ConfigCommands;
 use commands::keys::KeyCommands;
 use idl::Generator;
 
@@ -75,6 +76,10 @@ enum Commands {
         #[command(subcommand)]
         command: ClientCommands,
     },
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommands,
+    },
     #[command(name = "--help")]
     Help,
 }
@@ -128,6 +133,11 @@ fn main() -> Result<()> {
                 yes,
             } => {
                 commands::client::generate_client(idl_dir, out_dir, *generator, *auto_install, *yes)?;
+            }
+        },
+        Commands::Config { command } => match command {
+            ConfigCommands::Init { yes } => {
+                commands::config::init_config(*yes)?;
             }
         },
         Commands::Help => {

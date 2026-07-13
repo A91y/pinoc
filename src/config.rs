@@ -23,20 +23,14 @@ pub struct IdlConfig {
     pub generator: Option<String>,
 }
 
-/// Bails if `Pinoc.toml` is missing. Used by commands that genuinely require it (`deploy`).
-pub fn read_pinoc_config() -> Result<PinocConfig> {
-    let config_path = Path::new("Pinoc.toml");
-    if !config_path.exists() {
-        anyhow::bail!("Pinoc.toml not found. Please run this command from a project root.");
-    }
-    parse_pinoc_config(config_path)
-}
-
-/// Returns `None` if `Pinoc.toml` is missing, rather than bailing. Used by IDL
-/// generation, which should fall through to auto-detect outside a full project.
+/// Returns `None` if `Pinoc.toml` is missing, rather than erroring — callers
+/// fall back to their own defaults (`solana config get` for deploy,
+/// auto-detection for IDL generation). Prints a one-line hint pointing at
+/// `pinoc config init` so the fallback path isn't a dead end.
 pub fn read_pinoc_config_optional() -> Result<Option<PinocConfig>> {
     let config_path = Path::new("Pinoc.toml");
     if !config_path.exists() {
+        println!("💡 No Pinoc.toml found. Run `pinoc config init` to create one for this project.");
         return Ok(None);
     }
     Ok(Some(parse_pinoc_config(config_path)?))

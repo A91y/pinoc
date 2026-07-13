@@ -111,6 +111,7 @@ That's it! You now have a fully functional Solana program ready for development.
 | `pinoc keys sync`      | Sync program IDs      | `pinoc keys sync`               |
 | `pinoc idl`            | Regenerate the IDL JSON | `pinoc idl --out-dir target/idl` |
 | `pinoc client generate` | Generate a Rust client from the IDL | `pinoc client generate` |
+| `pinoc config init`    | Create a Pinoc.toml for this project | `pinoc config init`    |
 | `pinoc help`           | Show help             | `pinoc help`                    |
 
 ### Command Options
@@ -176,6 +177,15 @@ Pinoc uses `Pinoc.toml` for deployment settings:
 [provider]
 cluster = "localhost"
 wallet = "~/.config/solana/id.json"
+```
+
+`Pinoc.toml` isn't required for `pinoc deploy` — if it's missing, cluster/wallet defaults come from `solana config get` (your Solana CLI's own config) instead. `--cluster`/`--wallet` always override individual fields regardless of where the defaults came from. Any command that would've used `Pinoc.toml` (deploy, IDL generation) still works without one; it just prints a hint pointing at `pinoc config init` in case you want one.
+
+Create a `Pinoc.toml` for an existing project on demand:
+
+```bash
+pinoc config init       # refuses (with a hint) if this doesn't look like a Pinocchio project
+pinoc config init -y    # skip that check
 ```
 
 Override settings per deployment:

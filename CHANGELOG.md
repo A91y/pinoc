@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--idl-generator <shank|codama>` on both `pinoc idl` and `pinoc build`: forces the `.codama.json` generator instead of auto-detecting, for either direction (force native extraction on an unannotated program, or force the shim on an annotated one).
 - `[idl].generator = "auto" | "shank" | "codama"` in `Pinoc.toml` (new section, also added to the generated template): a persistent per-project default for the same choice. Precedence is `--idl-generator` > `Pinoc.toml` > auto-detect.
 - `pinoc client generate` now uses the same Codama-macro detection to recommend a generator: the interactive prompt's default (on bare Enter) flips to whichever was detected. If `--generator` is passed explicitly and contradicts detection, a confirmation prompt appears; `-y`/`--yes` skips it. Non-interactively (no TTY) without `-y` in that situation, it refuses with a message telling you to add the flag, rather than guessing or hanging.
+- `pinoc deploy` no longer requires `Pinoc.toml` to exist. If it's missing, cluster/wallet defaults now come from `solana config get` (the Solana CLI's own config) instead of failing outright; `--cluster`/`--wallet` still override individual fields either way, and are skipped entirely (no `Pinoc.toml`/`solana config get` lookup at all) when both are passed explicitly.
+- `pinoc config init [-y]`: creates a `Pinoc.toml` for the current project on demand (a no-op if one already exists). Refuses on a project with no `pinocchio` dependency in `Cargo.toml` unless `-y`/`--yes` is passed, or bails with that same hint non-interactively. Any command that reads `Pinoc.toml` and finds it missing now prints a one-line pointer to this command instead of just silently falling back.
 
 ### Changed
 - **Breaking**: `pinoc init` now generates the minimal no-op program by default (previously behind `--no-boilerplate`). The full PDA-account example is now opt-in via `--with-example` (replaces `--no-boilerplate`, which is removed).
@@ -29,9 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pinoc build`'s IDL-generation warning now prints the full underlying error instead of a generic one-liner, plus a hint to pass `--program-id` if the program doesn't use `declare_id!`.
 - The printed `npm install` instructions for the `codama` generator's first run are now a true one-liner (`npm install --prefix <dir>`) instead of `cd <dir> && npm install`.
 - Reorganized `src/`: `main.rs` now only holds CLI parsing and dispatch; each command lives in `src/commands/`, IDL generation/transformation in `src/idl/`, and client generation in `src/client_gen/{shank,codama}/`.
+- `PinocConfig`/`ProviderConfig` moved out of `src/commands/deploy.rs` into a new shared `src/config.rs`, since `pinoc idl`/`pinoc build` now also read `Pinoc.toml` (for `[idl].generator`) and it's no longer deploy-specific. `read_pinoc_config_optional` returns `None` instead of erroring when the file is simply absent, so both IDL generation and `deploy` can fall back to their own defaults outside a `Pinoc.toml` project.
 
 ### Fixed
 - `#[idl_type("publicKey")]` field overrides produced `{"defined": "publicKey"}` in the IDL rather than the literal `"publicKey"` type. This broke `pinoc client generate --generator shank` (emitted a reference to an undefined `PublicKey` type) and left those fields unrewritten in `.codama.json`. Both now treat `Defined("publicKey")` the same as `Defined("Address")`.
+- `--idl-generator shank` on a program that actually has Codama macros used to print "no Codama macros detected" (misleading — they were detected, just overridden). Now correctly says the choice was forced.
 
 ## [0.1.7] - 2026-07-13
 
