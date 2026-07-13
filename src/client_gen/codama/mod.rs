@@ -22,7 +22,9 @@ import fs from 'fs';
 
 const [, , idlPath, generatedDir, crateFolder] = process.argv;
 const idl = JSON.parse(fs.readFileSync(idlPath, 'utf-8'));
-const rootNode = rootNodeFromAnchor(idl);
+// A native Codama extraction (pinoc's codama_native module) is already a
+// RootNode; only shank-shim output needs the Anchor-shaped conversion.
+const rootNode = idl.kind === 'rootNode' ? idl : rootNodeFromAnchor(idl);
 const codama = createFromRoot(rootNode);
 
 await codama.accept(

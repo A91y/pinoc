@@ -108,6 +108,9 @@ pub fn pinoc_toml() -> &'static str {
     r#"[provider]
 cluster = "localhost"
 wallet = "~/.config/solana/id.json"
+
+[idl]
+generator = "auto"
 "#
 }
 

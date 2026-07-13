@@ -1,19 +1,8 @@
+use crate::config::read_pinoc_config;
 use anyhow::{Context, Result};
-use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-
-#[derive(Debug, Deserialize)]
-struct PinocConfig {
-    provider: ProviderConfig,
-}
-
-#[derive(Debug, Deserialize)]
-struct ProviderConfig {
-    cluster: String,
-    wallet: String,
-}
 
 pub fn run_deploy(cluster: Option<&str>, wallet: Option<&str>) -> Result<()> {
     println!("Deploying program");
@@ -68,21 +57,6 @@ pub fn run_deploy(cluster: Option<&str>, wallet: Option<&str>) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn read_pinoc_config() -> Result<PinocConfig> {
-    let config_path = Path::new("Pinoc.toml");
-    if !config_path.exists() {
-        anyhow::bail!("Pinoc.toml not found. Please run this command from a project root.");
-    }
-
-    let config_content =
-        fs::read_to_string(config_path).with_context(|| "Failed to read Pinoc.toml")?;
-
-    let config: PinocConfig =
-        toml::from_str(&config_content).with_context(|| "Failed to parse Pinoc.toml")?;
-
-    Ok(config)
 }
 
 fn expand_tilde(path: &str) -> Result<String> {

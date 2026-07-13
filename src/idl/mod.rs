@@ -1,11 +1,19 @@
 pub mod codama;
+pub mod codama_native;
 pub mod manual_errors;
 
+use crate::config;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
-pub fn generate_idl(out_dir: &str, program_id: Option<&str>) -> Result<()> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum Generator {
+    Shank,
+    Codama,
+}
+
+pub fn generate_idl(out_dir: &str, program_id: Option<&str>, generator_override: Option<Generator>) -> Result<()> {
     println!("🧩 Generating IDL...");
 
     let crate_root = std::env::current_dir().with_context(|| "Failed to read current directory")?;
@@ -50,9 +58,23 @@ pub fn generate_idl(out_dir: &str, program_id: Option<&str>) -> Result<()> {
     let idl_json = render_idl_json(&idl, errors.as_deref())
         .with_context(|| "Failed to serialize IDL to JSON")?;
 
-    let codama_idl = codama::to_codama_compatible(&idl);
-    let codama_idl_json = render_idl_json(&codama_idl, errors.as_deref())
-        .with_context(|| "Failed to serialize codama-compatible IDL to JSON")?;
+    let src_dir = lib_path.parent().unwrap_or(&crate_root);
+    let (resolved_generator, forced) = resolve_generator(generator_override, &crate_root, src_dir)?;
+    let codama_idl_json = match resolved_generator {
+        Generator::Shank => {
+            let reason = if forced { "forced" } else { "no Codama macros detected" };
+            println!("📄 .codama.json: shank IDL + compatibility shim ({reason})");
+            let codama_idl = codama::to_codama_compatible(&idl);
+            render_idl_json(&codama_idl, errors.as_deref())
+                .with_context(|| "Failed to serialize codama-compatible IDL to JSON")?
+        }
+        Generator::Codama => {
+            let reason = if forced { "forced" } else { "Codama macros detected" };
+            println!("🔷 .codama.json: native Codama extraction ({reason})");
+            codama_native::extract_native_codama_idl(&crate_root, idl.metadata.address.as_deref())
+                .with_context(|| "Failed to extract native Codama IDL")?
+        }
+    };
 
     let out_path = Path::new(out_dir);
     fs::create_dir_all(out_path)
@@ -67,6 +89,40 @@ pub fn generate_idl(out_dir: &str, program_id: Option<&str>) -> Result<()> {
     println!("✅ IDL written to {}", idl_file.display());
     println!("✅ Codama-compatible IDL written to {}", codama_idl_file.display());
     Ok(())
+}
+
+/// Resolves which generator produces `.codama.json`: an explicit CLI override
+/// wins, then `[idl].generator` in `Pinoc.toml` (unless `"auto"`), then
+/// auto-detecting Codama macros in the program's own source. The returned
+/// `bool` is `true` when the choice was forced (CLI/Pinoc.toml), `false` when
+/// it came from detection, so callers can print an accurate reason.
+fn resolve_generator(
+    generator_override: Option<Generator>,
+    crate_root: &Path,
+    src_dir: &Path,
+) -> Result<(Generator, bool)> {
+    if let Some(g) = generator_override {
+        return Ok((g, true));
+    }
+
+    let toml_choice = config::read_pinoc_config_optional()?
+        .and_then(|c| c.idl.generator)
+        .filter(|s| s != "auto");
+    if let Some(choice) = toml_choice {
+        return match choice.as_str() {
+            "codama" => Ok((Generator::Codama, true)),
+            "shank" => Ok((Generator::Shank, true)),
+            other => anyhow::bail!(
+                "Invalid [idl].generator {other:?} in Pinoc.toml, expected \"auto\", \"shank\", or \"codama\""
+            ),
+        };
+    }
+
+    if codama_native::codama_macros_detected(crate_root, src_dir)? {
+        Ok((Generator::Codama, false))
+    } else {
+        Ok((Generator::Shank, false))
+    }
 }
 
 /// Serializes `idl` to pretty JSON, overlaying `manual_errors` onto the

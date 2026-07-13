@@ -237,6 +237,24 @@ The `--with-example` project's instructions and accounts are already annotated s
 
 Errors are the one exception: if your error enum doesn't derive `thiserror::Error` (all `shank_idl` recognizes on its own), `pinoc idl` falls back to detecting a plain enum with a manual `impl From<X> for ProgramError`, synthesizing each message from the variant name (`InvalidPda` -> "Invalid Pda").
 
+#### Native Codama macros
+
+If your program is annotated with [Codama](https://github.com/codama-idl/codama-rs)'s own Rust derive macros (`CodamaAccount`, `CodamaInstructions`, `CodamaErrors`, `CodamaType`, etc. — a `codama` dependency plus at least one of these derives) `pinoc idl` detects it automatically and generates `.codama.json` from Codama's own extractor instead of the shank+shim path. You can tell which one you got: native output has a top-level `"kind": "rootNode"` field; shim output doesn't (it carries `"metadata": {"origin": "shank", ...}` instead). Either way, the plain `<name>.json` is unaffected — it's always shank's extraction.
+
+Override the choice per-invocation or per-project:
+
+```bash
+pinoc idl --idl-generator shank     # force the shim even if Codama macros are present
+pinoc idl --idl-generator codama    # force native extraction (errors if no Codama macros exist)
+```
+
+```toml
+# Pinoc.toml
+[idl]
+generator = "auto"   # "auto" | "shank" | "codama"
+```
+CLI flag wins over `Pinoc.toml`, which wins over auto-detection.
+
 ### Client Generation
 
 `pinoc client generate` writes a small, standalone Rust client crate to `clients/rust/`. Two generators are available:
@@ -252,6 +270,8 @@ pinoc client generate --out-dir clients/rust --idl-dir target/idl
 ```
 
 If you pick `codama` and its npm dependencies (managed in a project-local `clients/rust/.pinoc-codama/`, isolated from anything else) aren't installed yet, `pinoc` stops and shows the exact `npm install` command to run — it won't install anything without your say-so unless you pass `--auto-install`. If Node.js itself isn't found, it prints a quick-install pointer instead. `.pinoc-codama/` is added to your project's `.gitignore` automatically (a new one is only created if the project is a git repo).
+
+`pinoc client generate` uses the same Codama-macro detection as `pinoc idl` to recommend a generator: when run interactively without `--generator`, the prompt's default flips to whichever was detected. If you pass `--generator` explicitly and it contradicts detection (e.g. `--generator shank` on a program with Codama macros), you'll be asked to confirm — skip that with `-y`/`--yes`. Non-interactively (no TTY) without `-y`, it refuses and tells you to add the flag rather than guessing.
 
 Run `pinoc build` (or `pinoc idl`) first so the IDL exists. The generated crate is standalone — `cd clients/rust && cargo build` — and not part of the program's own Cargo workspace.
 

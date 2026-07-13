@@ -3,11 +3,13 @@ use clap::{Parser, Subcommand};
 
 mod client_gen;
 mod commands;
+mod config;
 mod idl;
 mod templates;
 
 use commands::client::ClientCommands;
 use commands::keys::KeyCommands;
+use idl::Generator;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -34,6 +36,8 @@ enum Commands {
             help = "Program address override for IDL generation, for programs that don't use declare_id!"
         )]
         program_id: Option<String>,
+        #[arg(long, value_enum, help = "Force the .codama.json generator instead of auto-detecting Codama macros")]
+        idl_generator: Option<Generator>,
     },
     Test {
         #[arg(long, short, help = "Suppress verbose output")]
@@ -64,6 +68,8 @@ enum Commands {
         out_dir: String,
         #[arg(long, help = "Program address to use, for programs that don't call declare_id!")]
         program_id: Option<String>,
+        #[arg(long, value_enum, help = "Force the .codama.json generator instead of auto-detecting Codama macros")]
+        idl_generator: Option<Generator>,
     },
     Client {
         #[command(subcommand)]
@@ -84,8 +90,8 @@ fn main() -> Result<()> {
         } => {
             commands::init::init_project(project_name, *no_git, *with_example)?;
         }
-        Commands::Build { quiet, program_id } => {
-            commands::build::run_build(*quiet, program_id.as_deref())?;
+        Commands::Build { quiet, program_id, idl_generator } => {
+            commands::build::run_build(*quiet, program_id.as_deref(), *idl_generator)?;
         }
         Commands::Test { quiet } => {
             commands::test::run_test(*quiet)?;
@@ -110,8 +116,8 @@ fn main() -> Result<()> {
                 commands::keys::sync_program_keys()?;
             }
         },
-        Commands::Idl { out_dir, program_id } => {
-            commands::idl::run_idl(out_dir, program_id.as_deref())?;
+        Commands::Idl { out_dir, program_id, idl_generator } => {
+            commands::idl::run_idl(out_dir, program_id.as_deref(), *idl_generator)?;
         }
         Commands::Client { command } => match command {
             ClientCommands::Generate {
@@ -119,8 +125,9 @@ fn main() -> Result<()> {
                 idl_dir,
                 generator,
                 auto_install,
+                yes,
             } => {
-                commands::client::generate_client(idl_dir, out_dir, *generator, *auto_install)?;
+                commands::client::generate_client(idl_dir, out_dir, *generator, *auto_install, *yes)?;
             }
         },
         Commands::Help => {
