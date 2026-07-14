@@ -34,6 +34,14 @@ pub fn run_deploy(cluster: Option<&str>, wallet: Option<&str>) -> Result<()> {
         anyhow::anyhow!("No .so file found in target/deploy. Please run 'pinoc build' first.")
     })?;
 
+    // Use the program's own keypair as --program-id so the deploy matches
+    // `declare_id!` and upgrades in place instead of a new random address.
+    let program_keypair = so_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|stem| so_path.with_file_name(format!("{stem}-keypair.json")))
+        .filter(|p| p.exists());
+
     let mut deploy_cmd = Command::new("solana");
     deploy_cmd
         .arg("program")
@@ -41,8 +49,12 @@ pub fn run_deploy(cluster: Option<&str>, wallet: Option<&str>) -> Result<()> {
         .arg("--url")
         .arg(cluster_url)
         .arg("--keypair")
-        .arg(&expand_tilde(wallet_path)?)
-        .arg(&so_path);
+        .arg(&expand_tilde(wallet_path)?);
+    if let Some(program_keypair) = &program_keypair {
+        println!("   Program keypair: {}", program_keypair.display());
+        deploy_cmd.arg("--program-id").arg(program_keypair);
+    }
+    deploy_cmd.arg(&so_path);
 
     let status = deploy_cmd
         .spawn()?

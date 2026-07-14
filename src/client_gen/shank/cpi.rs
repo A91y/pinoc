@@ -3,7 +3,7 @@
 //! the program itself appears to use CPI (or the user forces it), since it
 //! pulls in 3 extra dependencies unconditionally otherwise unused.
 
-use super::types::idl_type_to_rust;
+use super::types::{idl_type_to_rust, safe_ident};
 use anyhow::Result;
 use heck::{ToPascalCase, ToSnakeCase};
 use shank_idl::idl_instruction::{IdlAccount, IdlInstruction};
@@ -64,7 +64,7 @@ pub fn instruction_cpi_rs(ix: &IdlInstruction, accounts: &[&IdlAccount]) -> Resu
         .map(|acc| {
             format!(
                 "    pub {}: &'b solana_account_info::AccountInfo<'a>,\n",
-                acc.name.to_snake_case()
+                safe_ident(&acc.name.to_snake_case())
             )
         })
         .collect();
@@ -72,7 +72,7 @@ pub fn instruction_cpi_rs(ix: &IdlInstruction, accounts: &[&IdlAccount]) -> Resu
     let account_metas: String = accounts
         .iter()
         .map(|acc| {
-            let acc_name = acc.name.to_snake_case();
+            let acc_name = safe_ident(&acc.name.to_snake_case());
             let meta = if acc.is_mut {
                 format!("solana_instruction::AccountMeta::new(*self.{acc_name}.key, {})", acc.is_signer)
             } else {
@@ -87,19 +87,19 @@ pub fn instruction_cpi_rs(ix: &IdlInstruction, accounts: &[&IdlAccount]) -> Resu
 
     let account_info_pushes: String = accounts
         .iter()
-        .map(|acc| format!("        account_infos.push(self.{}.clone());\n", acc.name.to_snake_case()))
+        .map(|acc| format!("        account_infos.push(self.{}.clone());\n", safe_ident(&acc.name.to_snake_case())))
         .collect();
 
     let mut builder_setters = String::new();
     for acc in accounts {
-        let acc_name = acc.name.to_snake_case();
+        let acc_name = safe_ident(&acc.name.to_snake_case());
         builder_setters.push_str(&format!(
             "    pub fn {acc_name}(&mut self, {acc_name}: &'b solana_account_info::AccountInfo<'a>) -> &mut Self {{\n        self.instruction.{acc_name} = Some({acc_name});\n        self\n    }}\n"
         ));
     }
     let mut builder_arg_setters = String::new();
     for field in &ix.args {
-        let field_name = field.name.to_snake_case();
+        let field_name = safe_ident(&field.name.to_snake_case());
         let field_ty = idl_type_to_rust(&field.ty)?;
         builder_arg_setters.push_str(&format!(
             "    pub fn {field_name}(&mut self, {field_name}: {field_ty}) -> &mut Self {{\n        self.instruction.{field_name} = Some({field_name});\n        self\n    }}\n"
@@ -111,27 +111,27 @@ pub fn instruction_cpi_rs(ix: &IdlInstruction, accounts: &[&IdlAccount]) -> Resu
 
     let builder_account_fields: String = accounts
         .iter()
-        .map(|acc| format!("    {}: Option<&'b solana_account_info::AccountInfo<'a>>,\n", acc.name.to_snake_case()))
+        .map(|acc| format!("    {}: Option<&'b solana_account_info::AccountInfo<'a>>,\n", safe_ident(&acc.name.to_snake_case())))
         .collect();
     let builder_arg_fields: String = ix
         .args
         .iter()
-        .map(|f| Ok(format!("    {}: Option<{}>,\n", f.name.to_snake_case(), idl_type_to_rust(&f.ty)?)))
+        .map(|f| Ok(format!("    {}: Option<{}>,\n", safe_ident(&f.name.to_snake_case()), idl_type_to_rust(&f.ty)?)))
         .collect::<Result<Vec<_>>>()?
         .join("");
     let builder_account_inits: String = accounts
         .iter()
-        .map(|acc| format!("            {}: None,\n", acc.name.to_snake_case()))
+        .map(|acc| format!("            {}: None,\n", safe_ident(&acc.name.to_snake_case())))
         .collect();
     let builder_arg_inits: String = ix
         .args
         .iter()
-        .map(|f| format!("            {}: None,\n", f.name.to_snake_case()))
+        .map(|f| format!("            {}: None,\n", safe_ident(&f.name.to_snake_case())))
         .collect();
     let builder_accounts_struct_fields: String = accounts
         .iter()
         .map(|acc| {
-            let acc_name = acc.name.to_snake_case();
+            let acc_name = safe_ident(&acc.name.to_snake_case());
             format!(
                 "            {acc_name}: self.instruction.{acc_name}.expect(\"{acc_name} is required\"),\n"
             )
@@ -141,20 +141,33 @@ pub fn instruction_cpi_rs(ix: &IdlInstruction, accounts: &[&IdlAccount]) -> Resu
         .args
         .iter()
         .map(|f| {
-            let field_name = f.name.to_snake_case();
+            let field_name = safe_ident(&f.name.to_snake_case());
             format!(
                 "            {field_name}: self.instruction.{field_name}.clone().expect(\"{field_name} is required\"),\n"
             )
         })
         .collect();
 
+    // A zero-account instruction has no fields referencing 'a/'b, so emitting an
+    // empty `{name}CpiAccounts<'a, 'b>` would fail with E0392 (unused lifetime).
+    // Match Codama: skip the accounts struct (and its `new` param) entirely.
+    let cpi_accounts_struct = if accounts.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "/// `{snake}` CPI accounts.\npub struct {name}CpiAccounts<'a, 'b> {{\n{account_fields}}}\n\n",
+            snake = ix.name.to_snake_case(),
+        )
+    };
+    let new_accounts_param = if accounts.is_empty() {
+        String::new()
+    } else {
+        format!("        accounts: {name}CpiAccounts<'a, 'b>,\n")
+    };
+
     Ok(format!(
         r#"
-/// `{snake_name}` CPI accounts.
-pub struct {name}CpiAccounts<'a, 'b> {{
-{account_fields}}}
-
-/// `{snake_name}` CPI instruction.
+{cpi_accounts_struct}/// `{snake_name}` CPI instruction.
 pub struct {name}Cpi<'a, 'b> {{
     pub __program: &'b solana_account_info::AccountInfo<'a>,
 {account_fields}    pub __args: {name}InstructionArgs,
@@ -163,8 +176,7 @@ pub struct {name}Cpi<'a, 'b> {{
 impl<'a, 'b> {name}Cpi<'a, 'b> {{
     pub fn new(
         program: &'b solana_account_info::AccountInfo<'a>,
-        accounts: {name}CpiAccounts<'a, 'b>,
-        args: {name}InstructionArgs,
+{new_accounts_param}        args: {name}InstructionArgs,
     ) -> Self {{
         Self {{
             __program: program,
@@ -260,7 +272,7 @@ impl<'a, 'b> {name}CpiBuilder<'a, 'b> {{
         account_from_accounts = accounts
             .iter()
             .map(|acc| {
-                let acc_name = acc.name.to_snake_case();
+                let acc_name = safe_ident(&acc.name.to_snake_case());
                 format!("            {acc_name}: accounts.{acc_name},\n")
             })
             .collect::<String>(),

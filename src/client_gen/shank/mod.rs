@@ -14,7 +14,7 @@ use shank_idl::idl::Idl;
 use shared::shared_rs;
 use std::fs;
 use std::path::Path;
-use types::type_def_rs;
+use types::{safe_ident, type_def_rs};
 
 /// Mirrors the shape of Codama's Rust renderer output, not the literal renderer itself.
 pub fn generate_rust_client(idl_path: &Path, out_dir: &Path, generate_cpi: bool) -> Result<()> {
@@ -85,7 +85,8 @@ pub fn generate_rust_client(idl_path: &Path, out_dir: &Path, generate_cpi: bool)
 fn mod_rs(files: &[String]) -> String {
     let mut out = String::new();
     for f in files {
-        out.push_str(&format!("pub mod {f};\npub use {f}::*;\n"));
+        let m = safe_ident(f);
+        out.push_str(&format!("pub mod {m};\npub use {m}::*;\n"));
     }
     out
 }

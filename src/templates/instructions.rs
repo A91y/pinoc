@@ -24,6 +24,13 @@ pub struct Initialize {
     pub bump: u8,
 }
 
+// Read zero-copy via `load_ix_data`, so the #[repr(C)] layout must be padding-free
+// to match the packed borsh the client sends. Add `_padding: [u8; N]` if widened.
+const _: () = assert!(
+    core::mem::size_of::<Initialize>() == 32 + 1,
+    "Initialize has implicit padding; add explicit _padding fields so its #[repr(C)] layout matches the borsh client"
+);
+
 impl DataLen for Initialize {
     const LEN: usize = core::mem::size_of::<Initialize>();
 }

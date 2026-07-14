@@ -19,6 +19,13 @@ pub struct MyState {
     pub owner: Address,
 }
 
+// Read zero-copy (pointer cast), so the #[repr(C)] layout must be padding-free
+// to match the packed borsh the client sends. Add `_padding: [u8; N]` if widened.
+const _: () = assert!(
+    core::mem::size_of::<MyState>() == 32,
+    "MyState has implicit padding; add explicit _padding fields so its #[repr(C)] layout matches the borsh client"
+);
+
 impl DataLen for MyState {
     const LEN: usize = core::mem::size_of::<MyState>();
 }

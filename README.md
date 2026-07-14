@@ -305,6 +305,12 @@ If you pick `codama` and its npm dependencies (managed in a project-local `<out-
 
 Run `pinoc build` (or `pinoc idl`) first so the IDL exists. The generated crate is standalone — `cd clients/rust-shank && cargo build` (or `clients/rust-codama`) — and not part of the program's own Cargo workspace.
 
+#### Zero-copy layout: keep `#[repr(C)]` IDL structs padding-free
+
+The generated client (de)serializes instructions and accounts as **packed borsh**, while the scaffold reads them zero-copy via `#[repr(C)]` + pointer casts (`load_ix_data` / `load_acc_mut_unchecked`). Those agree only when the `#[repr(C)]` struct has no implicit alignment padding. Add a wider field (e.g. a `u64` after a `u8`) and the compiler inserts padding, so the client's bytes no longer match what the program reads.
+
+Two guards catch this: scaffolded `#[repr(C)]` IDL structs carry a compile-time `const _: () = assert!(size_of::<T>() == …)` (adding a padding-inducing field fails the build), and `pinoc build` / `pinoc idl` warn when any `ShankAccount`/`ShankType` `#[repr(C)]` struct has implicit padding. The fix is to add explicit `_padding: [u8; N]` fields so the layout is deterministic and matches the borsh client (this is how the Solana Foundation's `pinocchio-counter` template keeps zero-copy while staying client-compatible).
+
 ## 🔗 Prerequisites
 
 Ensure you have these tools installed:

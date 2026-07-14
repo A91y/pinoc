@@ -7,6 +7,7 @@
 pub mod codama;
 pub mod codama_native;
 pub mod manual_errors;
+pub mod padding_lint;
 
 use crate::config;
 use anyhow::{Context, Result};
@@ -94,6 +95,17 @@ pub fn generate_idl(out_dir: &str, program_id: Option<&str>, generator_override:
 
     println!("✅ IDL written to {}", idl_file.display());
     println!("✅ Codama-compatible IDL written to {}", codama_idl_file.display());
+
+    // A #[repr(C)] struct with implicit padding is read zero-copy on-chain but
+    // (de)serialized as packed borsh by the client, so the layouts disagree.
+    for w in padding_lint::find_padded_repr_c_structs(src_dir)? {
+        let pad = w.repr_c_size - w.packed_size;
+        println!(
+            "⚠️  `{}` is #[repr(C)] with {pad} byte(s) of implicit padding (layout size {} vs packed {}). The generated client (de)serializes it as packed borsh, so it won't round-trip on-chain. Add explicit `_padding: [u8; {pad}]` field(s).",
+            w.name, w.repr_c_size, w.packed_size
+        );
+    }
+
     Ok(())
 }
 

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(clap::Subcommand)]
@@ -108,88 +108,178 @@ pub fn sync_program_keys() -> Result<()> {
         .trim()
         .to_string();
 
-    let lib_rs_path = Path::new("src/lib.rs");
-    if !lib_rs_path.exists() {
-        anyhow::bail!("src/lib.rs not found");
+    let src_dir = Path::new("src");
+    if !src_dir.exists() {
+        anyhow::bail!("src/ directory not found. Please run this command from a project root.");
     }
 
-    let lib_content =
-        fs::read_to_string(lib_rs_path).with_context(|| "Failed to read src/lib.rs")?;
-
-    if let Some(current_pubkey) = extract_current_program_id(&lib_content) {
-        if current_pubkey == actual_pubkey {
-            println!("✅ Program key is already consistent!");
-            println!("🔑 Program ID: {}", actual_pubkey);
-            println!("📝 No update needed in src/lib.rs");
-            return Ok(());
-        } else {
+    match find_program_id_decl(src_dir)? {
+        Some(decl) => {
+            if decl.address == actual_pubkey {
+                println!("✅ Program key is already consistent!");
+                println!("🔑 Program ID: {}", actual_pubkey);
+                println!("📝 No update needed ({})", decl.file.display());
+                return Ok(());
+            }
             println!("🔄 Program key mismatch detected:");
-            println!("   Current in lib.rs: {}", current_pubkey);
-            println!("   Actual keypair:    {}", actual_pubkey);
+            println!("   Current in {}: {}", decl.file.display(), decl.address);
+            println!("   Actual keypair:   {}", actual_pubkey);
+
+            let content = fs::read_to_string(&decl.file)
+                .with_context(|| format!("Failed to read {}", decl.file.display()))?;
+            // Replace only this address literal, preserving the declaration form.
+            let updated = content.replacen(
+                &format!("\"{}\"", decl.address),
+                &format!("\"{}\"", actual_pubkey),
+                1,
+            );
+            fs::write(&decl.file, updated)
+                .with_context(|| format!("Failed to write {}", decl.file.display()))?;
+
+            println!("✅ Successfully synced program key!");
+            println!("🔑 Program ID: {}", actual_pubkey);
+            println!("📝 Updated {}", decl.file.display());
         }
-    }
-
-    if let Some(updated_content) = update_declare_id(&lib_content, &actual_pubkey) {
-        fs::write(lib_rs_path, updated_content)
-            .with_context(|| "Failed to write updated src/lib.rs")?;
-
-        println!("✅ Successfully synced program key!");
-        println!("🔑 Program ID: {}", actual_pubkey);
-        println!("📝 Updated src/lib.rs with new program ID");
-    } else {
-        println!("⚠️  No declare_id! macro found in src/lib.rs");
-        println!("💡 Add this line to your lib.rs:");
-        println!("   pinocchio_pubkey::declare_id!(\"{}\");", actual_pubkey);
+        None => {
+            println!("⚠️  No program ID declaration found under src/.");
+            println!("💡 Declare your program ID with one of:");
+            println!("   pinocchio::address::declare_id!(\"{}\");", actual_pubkey);
+            println!(
+                "   pub const ID: Address = Address::from_str_const(\"{}\");",
+                actual_pubkey
+            );
+        }
     }
 
     Ok(())
 }
 
 fn extract_project_name(cargo_content: &str) -> Option<String> {
-    for line in cargo_content.lines() {
-        if line.trim().starts_with("name = ") {
-            if let Some(name) = line.split('=').nth(1) {
-                return Some(name.trim().trim_matches('"').to_string());
+    // Parse the manifest rather than line-matching: `name = "..."` may be
+    // aligned with padding spaces (`name    = "..."`) or otherwise formatted in
+    // any way valid TOML allows.
+    let manifest: toml::Value = toml::from_str(cargo_content).ok()?;
+    manifest
+        .get("package")?
+        .get("name")?
+        .as_str()
+        .map(str::to_string)
+}
+
+struct ProgramIdDecl {
+    file: PathBuf,
+    address: String,
+}
+
+/// Finds the program's own ID declaration anywhere under `src_dir`, in priority
+/// order: any `declare_id!("...")` macro (regardless of path prefix), else a
+/// `const ID` initialized from a string literal (`Address::from_str_const("...")`,
+/// `pubkey!("...")`, or a bare `"..."`). Returns the file the declaration lives
+/// in and the current address, since the ID isn't always a `declare_id!` in
+/// `lib.rs` (e.g. pinocchio 0.11 programs use `const ID` in `constants.rs`).
+fn find_program_id_decl(src_dir: &Path) -> Result<Option<ProgramIdDecl>> {
+    let mut files = Vec::new();
+    collect_rust_files(src_dir, &mut files)?;
+    files.sort();
+
+    let mut const_fallback: Option<ProgramIdDecl> = None;
+    for path in files {
+        let Ok(src) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(file) = syn::parse_file(&src) else {
+            continue;
+        };
+        if let Some(address) = find_declare_id(&file.items) {
+            return Ok(Some(ProgramIdDecl { file: path, address }));
+        }
+        if const_fallback.is_none() {
+            if let Some(address) = find_const_id(&file.items) {
+                const_fallback = Some(ProgramIdDecl { file: path, address });
             }
         }
     }
-    None
+    Ok(const_fallback)
 }
 
-fn update_declare_id(lib_content: &str, new_pubkey: &str) -> Option<String> {
-    let mut updated = false;
-    let mut lines = Vec::new();
-
-    for line in lib_content.lines() {
-        if line.contains("declare_id!") {
-            lines.push(format!(
-                "pinocchio_pubkey::declare_id!(\"{}\");",
-                new_pubkey
-            ));
-            updated = true;
-        } else {
-            lines.push(line.to_string());
+fn collect_rust_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_rust_files(&path, out)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push(path);
         }
     }
-
-    if updated {
-        Some(lines.join("\n"))
-    } else {
-        None
-    }
+    Ok(())
 }
 
-fn extract_current_program_id(lib_content: &str) -> Option<String> {
-    for line in lib_content.lines() {
-        if line.contains("declare_id!") {
-            // matches both declare_id! and pinocchio_pubkey::declare_id!
-            if let Some(start) = line.find("declare_id!(\"") {
-                let after_declare = &line[start + 13..]; // Skip "declare_id!(\""
-                if let Some(end) = after_declare.find("\"") {
-                    return Some(after_declare[..end].to_string());
+/// Any `declare_id!("...")` invocation, regardless of macro path prefix,
+/// including inside inline modules.
+fn find_declare_id(items: &[syn::Item]) -> Option<String> {
+    for item in items {
+        match item {
+            syn::Item::Macro(m) if macro_name_is(&m.mac, "declare_id") => {
+                if let Some(addr) = lit_str_from_macro(&m.mac) {
+                    return Some(addr);
                 }
             }
+            syn::Item::Mod(m) => {
+                if let Some((_, inner)) = &m.content {
+                    if let Some(addr) = find_declare_id(inner) {
+                        return Some(addr);
+                    }
+                }
+            }
+            _ => {}
         }
     }
     None
+}
+
+/// A `const ID` whose initializer carries a string literal
+/// (`Address::from_str_const("...")`, `pubkey!("...")`, or a bare `"..."`),
+/// including inside inline modules.
+fn find_const_id(items: &[syn::Item]) -> Option<String> {
+    for item in items {
+        match item {
+            syn::Item::Const(c) if c.ident == "ID" => {
+                if let Some(addr) = lit_str_from_expr(&c.expr) {
+                    return Some(addr);
+                }
+            }
+            syn::Item::Mod(m) => {
+                if let Some((_, inner)) = &m.content {
+                    if let Some(addr) = find_const_id(inner) {
+                        return Some(addr);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn macro_name_is(mac: &syn::Macro, name: &str) -> bool {
+    mac.path
+        .segments
+        .last()
+        .map(|s| s.ident == name)
+        .unwrap_or(false)
+}
+
+fn lit_str_from_macro(mac: &syn::Macro) -> Option<String> {
+    mac.parse_body::<syn::LitStr>().ok().map(|l| l.value())
+}
+
+/// Pulls a string literal out of `f("...")`, `m!("...")`, or a bare `"..."`.
+fn lit_str_from_expr(expr: &syn::Expr) -> Option<String> {
+    match expr {
+        syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) => Some(s.value()),
+        syn::Expr::Call(call) => call.args.iter().find_map(lit_str_from_expr),
+        syn::Expr::MethodCall(mc) => mc.args.iter().find_map(lit_str_from_expr),
+        syn::Expr::Macro(m) => lit_str_from_macro(&m.mac),
+        _ => None,
+    }
 }
