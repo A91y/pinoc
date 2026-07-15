@@ -50,7 +50,7 @@ pub fn generate_idl(out_dir: &str, program_id: Option<&str>, generator_override:
     // shank_idl only recognizes error enums that derive `thiserror::Error`. If
     // it found none, fall back to detecting a plain enum with a manual
     // `impl From<X> for ProgramError` instead of silently emitting no errors.
-    let errors = if idl.errors.as_ref().map_or(true, |e| e.is_empty()) {
+    let errors = if idl.errors.as_deref().unwrap_or_default().is_empty() {
         let src_dir = lib_path.parent().unwrap_or(&crate_root);
         manual_errors::find_manual_program_errors(src_dir)?
     } else {

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-16
+
 ### Added
 - `pinoc idl [--out-dir]`: generates an Anchor-style IDL JSON (instructions, accounts, types, errors) at `target/idl/<name>.json` by default, using [shank](https://github.com/metaplex-foundation/shank)'s `shank_idl` crate directly, compiled into `pinoc` itself — no separate `shank-cli` install required. `pinoc build` now also regenerates the IDL automatically after a successful build, matching `anchor build`'s behavior; a failed IDL extraction only warns, it never fails the build. The `--with-example` template's instructions/accounts/errors are annotated with `shank`'s derive macros so this works immediately.
 - `pinoc client generate [--out-dir] [--idl-dir]`: generates a standalone Rust client crate (`clients/rust/`) from the IDL — Borsh-based instruction builders and account (de)serialization, using lightweight `solana-pubkey`/`solana-instruction` crates. Pure Rust, no Node.js/npm, styled after Codama's Rust renderer conventions (confirmed by running the real Codama pipeline on the Solana Foundation's `pinocchio-counter` template and comparing output). Verified correct end-to-end: an instruction built by the generated client was submitted through `mollusk-svm` against a real compiled program and succeeded.
