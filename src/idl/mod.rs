@@ -20,7 +20,11 @@ pub enum Generator {
     Codama,
 }
 
-pub fn generate_idl(out_dir: &str, program_id: Option<&str>, generator_override: Option<Generator>) -> Result<()> {
+pub fn generate_idl(
+    out_dir: &str,
+    program_id: Option<&str>,
+    generator_override: Option<Generator>,
+) -> Result<()> {
     println!("🧩 Generating IDL...");
 
     let crate_root = std::env::current_dir().with_context(|| "Failed to read current directory")?;
@@ -69,14 +73,22 @@ pub fn generate_idl(out_dir: &str, program_id: Option<&str>, generator_override:
     let (resolved_generator, forced) = resolve_generator(generator_override, &crate_root, src_dir)?;
     let codama_idl_json = match resolved_generator {
         Generator::Shank => {
-            let reason = if forced { "forced" } else { "no Codama macros detected" };
+            let reason = if forced {
+                "forced"
+            } else {
+                "no Codama macros detected"
+            };
             println!("📄 .codama.json: shank IDL + compatibility shim ({reason})");
             let codama_idl = codama::to_codama_compatible(&idl);
             render_idl_json(&codama_idl, errors.as_deref())
                 .with_context(|| "Failed to serialize codama-compatible IDL to JSON")?
         }
         Generator::Codama => {
-            let reason = if forced { "forced" } else { "Codama macros detected" };
+            let reason = if forced {
+                "forced"
+            } else {
+                "Codama macros detected"
+            };
             println!("🔷 .codama.json: native Codama extraction ({reason})");
             codama_native::extract_native_codama_idl(&crate_root, idl.metadata.address.as_deref())
                 .with_context(|| "Failed to extract native Codama IDL")?
@@ -89,12 +101,16 @@ pub fn generate_idl(out_dir: &str, program_id: Option<&str>, generator_override:
     let lib_name = manifest.lib_name()?;
     let idl_file = out_path.join(format!("{lib_name}.json"));
     let codama_idl_file = out_path.join(format!("{lib_name}.codama.json"));
-    fs::write(&idl_file, idl_json).with_context(|| format!("Failed to write {}", idl_file.display()))?;
+    fs::write(&idl_file, idl_json)
+        .with_context(|| format!("Failed to write {}", idl_file.display()))?;
     fs::write(&codama_idl_file, codama_idl_json)
         .with_context(|| format!("Failed to write {}", codama_idl_file.display()))?;
 
     println!("✅ IDL written to {}", idl_file.display());
-    println!("✅ Codama-compatible IDL written to {}", codama_idl_file.display());
+    println!(
+        "✅ Codama-compatible IDL written to {}",
+        codama_idl_file.display()
+    );
 
     // A #[repr(C)] struct with implicit padding is read zero-copy on-chain but
     // (de)serialized as packed borsh by the client, so the layouts disagree.

@@ -7,7 +7,11 @@ use std::path::Path;
 pub enum ConfigCommands {
     /// Create a Pinoc.toml in the current project, if one doesn't already exist.
     Init {
-        #[arg(short = 'y', long = "yes", help = "Skip the confirmation prompt when this doesn't look like a Pinocchio project")]
+        #[arg(
+            short = 'y',
+            long = "yes",
+            help = "Skip the confirmation prompt when this doesn't look like a Pinocchio project"
+        )]
         yes: bool,
     },
 }

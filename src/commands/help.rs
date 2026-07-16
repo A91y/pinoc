@@ -8,7 +8,9 @@ pub fn display_help_banner() -> Result<()> {
 
     println!("\n🏗️ AVAILABLE COMMANDS:");
     println!("   pinoc init <project_name> [--no-git] [--with-example] - Initialize a new Pinocchio project");
-    println!("   pinoc build               - Build the project (also regenerates target/idl/*.json)");
+    println!(
+        "   pinoc build               - Build the project (also regenerates target/idl/*.json)"
+    );
     println!("   pinoc test                - Run project tests");
     println!("   pinoc deploy [--cluster] [--wallet] - Deploy the project (uses Pinoc.toml config, optional overrides)");
     println!(
@@ -19,7 +21,9 @@ pub fn display_help_banner() -> Result<()> {
     println!("   pinoc keys list           - List program keypairs");
     println!("   pinoc keys sync           - Sync program ID with keypair");
     println!("   pinoc idl [--out-dir]     - Regenerate the IDL JSON (also runs automatically on 'pinoc build')");
-    println!("   pinoc client generate [--generator shank|codama] - Generate a Rust client from the IDL");
+    println!(
+        "   pinoc client generate [--generator shank|codama] - Generate a Rust client from the IDL"
+    );
     println!("   pinoc config init [-y]    - Create a Pinoc.toml for the current project");
 
     Ok(())

@@ -37,7 +37,10 @@ pub fn generate_rust_client(idl_path: &Path, out_dir: &Path, generate_cpi: bool)
     fs::create_dir_all(&instructions_dir)?;
     fs::create_dir_all(&types_dir)?;
 
-    fs::write(out_dir.join("Cargo.toml"), cargo_toml(&idl.name, generate_cpi))?;
+    fs::write(
+        out_dir.join("Cargo.toml"),
+        cargo_toml(&idl.name, generate_cpi),
+    )?;
     fs::write(src_dir.join("lib.rs"), lib_rs(&program_address))?;
     fs::write(generated_dir.join("shared.rs"), shared_rs())?;
 

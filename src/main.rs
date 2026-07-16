@@ -26,7 +26,10 @@ enum Commands {
         project_name: String,
         #[arg(long, help = "Don't initialize git")]
         no_git: bool,
-        #[arg(long, help = "Include a worked PDA-account example instead of a no-op program")]
+        #[arg(
+            long,
+            help = "Include a worked PDA-account example instead of a no-op program"
+        )]
         with_example: bool,
     },
     Build {
@@ -37,7 +40,11 @@ enum Commands {
             help = "Program address override for IDL generation, for programs that don't use declare_id!"
         )]
         program_id: Option<String>,
-        #[arg(long, value_enum, help = "Force the .codama.json generator instead of auto-detecting Codama macros")]
+        #[arg(
+            long,
+            value_enum,
+            help = "Force the .codama.json generator instead of auto-detecting Codama macros"
+        )]
         idl_generator: Option<Generator>,
     },
     Test {
@@ -65,11 +72,22 @@ enum Commands {
         command: KeyCommands,
     },
     Idl {
-        #[arg(long, help = "Output directory for the IDL JSON", default_value = "target/idl")]
+        #[arg(
+            long,
+            help = "Output directory for the IDL JSON",
+            default_value = "target/idl"
+        )]
         out_dir: String,
-        #[arg(long, help = "Program address to use, for programs that don't call declare_id!")]
+        #[arg(
+            long,
+            help = "Program address to use, for programs that don't call declare_id!"
+        )]
         program_id: Option<String>,
-        #[arg(long, value_enum, help = "Force the .codama.json generator instead of auto-detecting Codama macros")]
+        #[arg(
+            long,
+            value_enum,
+            help = "Force the .codama.json generator instead of auto-detecting Codama macros"
+        )]
         idl_generator: Option<Generator>,
     },
     Client {
@@ -95,7 +113,11 @@ fn main() -> Result<()> {
         } => {
             commands::init::init_project(project_name, *no_git, *with_example)?;
         }
-        Commands::Build { quiet, program_id, idl_generator } => {
+        Commands::Build {
+            quiet,
+            program_id,
+            idl_generator,
+        } => {
             commands::build::run_build(*quiet, program_id.as_deref(), *idl_generator)?;
         }
         Commands::Test { quiet } => {
@@ -121,7 +143,11 @@ fn main() -> Result<()> {
                 commands::keys::sync_program_keys()?;
             }
         },
-        Commands::Idl { out_dir, program_id, idl_generator } => {
+        Commands::Idl {
+            out_dir,
+            program_id,
+            idl_generator,
+        } => {
             commands::idl::run_idl(out_dir, program_id.as_deref(), *idl_generator)?;
         }
         Commands::Client { command } => match command {
@@ -135,7 +161,13 @@ fn main() -> Result<()> {
                 no_cpi,
             } => {
                 commands::client::generate_client(
-                    idl_dir, out_dir.as_deref(), *generator, *auto_install, *yes, *with_cpi, *no_cpi,
+                    idl_dir,
+                    out_dir.as_deref(),
+                    *generator,
+                    *auto_install,
+                    *yes,
+                    *with_cpi,
+                    *no_cpi,
                 )?;
             }
         },

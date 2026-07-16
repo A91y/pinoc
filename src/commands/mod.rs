@@ -1,7 +1,7 @@
 mod banner;
 pub mod build;
-pub mod client;
 pub mod clean;
+pub mod client;
 pub mod config;
 pub mod deploy;
 pub mod help;

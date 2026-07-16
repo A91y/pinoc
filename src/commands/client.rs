@@ -8,19 +8,41 @@ use std::path::Path;
 #[derive(clap::Subcommand)]
 pub enum ClientCommands {
     Generate {
-        #[arg(long, help = "Output directory for the generated Rust client [default: clients/rust-shank or clients/rust-codama, depending on the resolved generator, so both can coexist]")]
+        #[arg(
+            long,
+            help = "Output directory for the generated Rust client [default: clients/rust-shank or clients/rust-codama, depending on the resolved generator, so both can coexist]"
+        )]
         out_dir: Option<String>,
         #[arg(long, help = "Path to the IDL JSON", default_value = "target/idl")]
         idl_dir: String,
-        #[arg(long, value_enum, help = "Which generator to use: shank (built-in, no setup) or codama (Node.js, richer output). Prompts interactively if omitted.")]
+        #[arg(
+            long,
+            value_enum,
+            help = "Which generator to use: shank (built-in, no setup) or codama (Node.js, richer output). Prompts interactively if omitted."
+        )]
         generator: Option<Generator>,
-        #[arg(long, help = "Automatically run 'npm install' for the codama generator if its dependencies aren't present yet")]
+        #[arg(
+            long,
+            help = "Automatically run 'npm install' for the codama generator if its dependencies aren't present yet"
+        )]
         auto_install: bool,
-        #[arg(short = 'y', long = "yes", help = "Skip the confirmation prompt when --generator contradicts detected Codama macros")]
+        #[arg(
+            short = 'y',
+            long = "yes",
+            help = "Skip the confirmation prompt when --generator contradicts detected Codama macros"
+        )]
         yes: bool,
-        #[arg(long, help = "Force CPI variant generation (XxxCpi/XxxCpiBuilder) in the shank generator, skipping auto-detection", conflicts_with = "no_cpi")]
+        #[arg(
+            long,
+            help = "Force CPI variant generation (XxxCpi/XxxCpiBuilder) in the shank generator, skipping auto-detection",
+            conflicts_with = "no_cpi"
+        )]
         with_cpi: bool,
-        #[arg(long, help = "Never generate CPI variants in the shank generator, regardless of auto-detection", conflicts_with = "with_cpi")]
+        #[arg(
+            long,
+            help = "Never generate CPI variants in the shank generator, regardless of auto-detection",
+            conflicts_with = "with_cpi"
+        )]
         no_cpi: bool,
     },
 }
@@ -86,7 +108,11 @@ pub fn generate_client(
                 client_gen::shank::cpi::cpi_usage_detected(&src_dir)?
             };
             if generate_cpi {
-                let reason = if with_cpi { "forced via --with-cpi" } else { "detected invoke()/invoke_signed() usage in program source" };
+                let reason = if with_cpi {
+                    "forced via --with-cpi"
+                } else {
+                    "detected invoke()/invoke_signed() usage in program source"
+                };
                 println!("🔌 CPI variants: generating ({reason})");
             }
 
@@ -167,7 +193,11 @@ fn confirm_contradicting_choice(chosen: Generator) -> Result<()> {
 }
 
 fn prompt_for_generator(detected_codama: bool) -> Generator {
-    let recommended = if detected_codama { Generator::Codama } else { Generator::Shank };
+    let recommended = if detected_codama {
+        Generator::Codama
+    } else {
+        Generator::Shank
+    };
 
     if !std::io::stdin().is_terminal() {
         return recommended;
@@ -181,11 +211,19 @@ fn prompt_for_generator(detected_codama: bool) -> Generator {
     println!("Which client generator would you like to use?");
     println!(
         "  1) shank  - built into pinoc, no setup required{}",
-        if detected_codama { "" } else { " (recommended)" }
+        if detected_codama {
+            ""
+        } else {
+            " (recommended)"
+        }
     );
     println!(
         "  2) codama - Node.js-based, richer output (CPI helpers, RPC fetch helpers){}",
-        if detected_codama { " (recommended)" } else { "" }
+        if detected_codama {
+            " (recommended)"
+        } else {
+            ""
+        }
     );
     print!("Choice [{}]: ", if detected_codama { "2" } else { "1" });
     let _ = std::io::stdout().flush();

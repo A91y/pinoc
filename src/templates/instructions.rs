@@ -1,4 +1,3 @@
-
 pub fn initialize() -> &'static str {
     r#"use pinocchio::{
     cpi::{Seed, Signer},

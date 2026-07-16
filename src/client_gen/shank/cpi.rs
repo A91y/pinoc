@@ -43,7 +43,9 @@ fn contains_invoke_call(src: &str) -> bool {
     for needle in ["invoke(", "invoke_signed("] {
         if let Some(pos) = src.find(needle) {
             let before = src[..pos].chars().next_back();
-            let is_word_boundary = before.map(|c| !c.is_alphanumeric() && c != '_').unwrap_or(true);
+            let is_word_boundary = before
+                .map(|c| !c.is_alphanumeric() && c != '_')
+                .unwrap_or(true);
             if is_word_boundary {
                 return true;
             }
@@ -74,7 +76,10 @@ pub fn instruction_cpi_rs(ix: &IdlInstruction, accounts: &[&IdlAccount]) -> Resu
         .map(|acc| {
             let acc_name = safe_ident(&acc.name.to_snake_case());
             let meta = if acc.is_mut {
-                format!("solana_instruction::AccountMeta::new(*self.{acc_name}.key, {})", acc.is_signer)
+                format!(
+                    "solana_instruction::AccountMeta::new(*self.{acc_name}.key, {})",
+                    acc.is_signer
+                )
             } else {
                 format!(
                     "solana_instruction::AccountMeta::new_readonly(*self.{acc_name}.key, {})",
@@ -87,7 +92,12 @@ pub fn instruction_cpi_rs(ix: &IdlInstruction, accounts: &[&IdlAccount]) -> Resu
 
     let account_info_pushes: String = accounts
         .iter()
-        .map(|acc| format!("        account_infos.push(self.{}.clone());\n", safe_ident(&acc.name.to_snake_case())))
+        .map(|acc| {
+            format!(
+                "        account_infos.push(self.{}.clone());\n",
+                safe_ident(&acc.name.to_snake_case())
+            )
+        })
         .collect();
 
     let mut builder_setters = String::new();
@@ -111,22 +121,43 @@ pub fn instruction_cpi_rs(ix: &IdlInstruction, accounts: &[&IdlAccount]) -> Resu
 
     let builder_account_fields: String = accounts
         .iter()
-        .map(|acc| format!("    {}: Option<&'b solana_account_info::AccountInfo<'a>>,\n", safe_ident(&acc.name.to_snake_case())))
+        .map(|acc| {
+            format!(
+                "    {}: Option<&'b solana_account_info::AccountInfo<'a>>,\n",
+                safe_ident(&acc.name.to_snake_case())
+            )
+        })
         .collect();
     let builder_arg_fields: String = ix
         .args
         .iter()
-        .map(|f| Ok(format!("    {}: Option<{}>,\n", safe_ident(&f.name.to_snake_case()), idl_type_to_rust(&f.ty)?)))
+        .map(|f| {
+            Ok(format!(
+                "    {}: Option<{}>,\n",
+                safe_ident(&f.name.to_snake_case()),
+                idl_type_to_rust(&f.ty)?
+            ))
+        })
         .collect::<Result<Vec<_>>>()?
         .join("");
     let builder_account_inits: String = accounts
         .iter()
-        .map(|acc| format!("            {}: None,\n", safe_ident(&acc.name.to_snake_case())))
+        .map(|acc| {
+            format!(
+                "            {}: None,\n",
+                safe_ident(&acc.name.to_snake_case())
+            )
+        })
         .collect();
     let builder_arg_inits: String = ix
         .args
         .iter()
-        .map(|f| format!("            {}: None,\n", safe_ident(&f.name.to_snake_case())))
+        .map(|f| {
+            format!(
+                "            {}: None,\n",
+                safe_ident(&f.name.to_snake_case())
+            )
+        })
         .collect();
     let builder_accounts_struct_fields: String = accounts
         .iter()

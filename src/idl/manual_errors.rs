@@ -112,7 +112,10 @@ fn manual_program_error_target(item_impl: &ItemImpl) -> Option<String> {
 
 fn literal_u32(expr: &Expr) -> Option<u32> {
     match expr {
-        Expr::Lit(ExprLit { lit: Lit::Int(lit_int), .. }) => lit_int.base10_parse::<u32>().ok(),
+        Expr::Lit(ExprLit {
+            lit: Lit::Int(lit_int),
+            ..
+        }) => lit_int.base10_parse::<u32>().ok(),
         _ => None,
     }
 }

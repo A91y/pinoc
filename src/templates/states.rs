@@ -1,4 +1,3 @@
-
 pub fn states_mod_rs() -> &'static str {
     r#"pub mod state;
 pub mod utils;

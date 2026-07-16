@@ -1,4 +1,3 @@
-
 pub fn unit_test_rs(address: &str, program_address: &str, project_name: &str) -> String {
     let template = r#"use mollusk_svm::result::{Check, ProgramResult};
 use mollusk_svm::{program, Mollusk};

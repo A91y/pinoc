@@ -54,7 +54,10 @@ pub fn list_program_keys() -> Result<()> {
     }
 
     println!("\n📋 Program Keys:");
-    println!("{:<20} {:<50} {:<30}", "Program", "Public Key", "Keypair File");
+    println!(
+        "{:<20} {:<50} {:<30}",
+        "Program", "Public Key", "Keypair File"
+    );
     println!("{:-<20} {:-<50} {:-<30}", "", "", "");
 
     for (program_name, pubkey, keypair_path) in found_keys {
@@ -191,11 +194,17 @@ fn find_program_id_decl(src_dir: &Path) -> Result<Option<ProgramIdDecl>> {
             continue;
         };
         if let Some(address) = find_declare_id(&file.items) {
-            return Ok(Some(ProgramIdDecl { file: path, address }));
+            return Ok(Some(ProgramIdDecl {
+                file: path,
+                address,
+            }));
         }
         if const_fallback.is_none() {
             if let Some(address) = find_const_id(&file.items) {
-                const_fallback = Some(ProgramIdDecl { file: path, address });
+                const_fallback = Some(ProgramIdDecl {
+                    file: path,
+                    address,
+                });
             }
         }
     }
@@ -276,7 +285,10 @@ fn lit_str_from_macro(mac: &syn::Macro) -> Option<String> {
 /// Pulls a string literal out of `f("...")`, `m!("...")`, or a bare `"..."`.
 fn lit_str_from_expr(expr: &syn::Expr) -> Option<String> {
     match expr {
-        syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) => Some(s.value()),
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(s),
+            ..
+        }) => Some(s.value()),
         syn::Expr::Call(call) => call.args.iter().find_map(lit_str_from_expr),
         syn::Expr::MethodCall(mc) => mc.args.iter().find_map(lit_str_from_expr),
         syn::Expr::Macro(m) => lit_str_from_macro(&m.mac),

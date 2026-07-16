@@ -2,7 +2,11 @@ use crate::idl::{generate_idl, Generator};
 use anyhow::{Context, Result};
 use std::process::Command;
 
-pub fn run_build(quiet: bool, program_id: Option<&str>, idl_generator: Option<Generator>) -> Result<()> {
+pub fn run_build(
+    quiet: bool,
+    program_id: Option<&str>,
+    idl_generator: Option<Generator>,
+) -> Result<()> {
     println!("Building program");
     let mut cmd = Command::new("cargo");
     cmd.arg("build-sbf");
@@ -18,7 +22,11 @@ pub fn run_build(quiet: bool, program_id: Option<&str>, idl_generator: Option<Ge
     }
 
     if let Err(e) = generate_idl("target/idl", program_id, idl_generator) {
-        let full_message = e.chain().map(|cause| cause.to_string()).collect::<Vec<_>>().join(": ");
+        let full_message = e
+            .chain()
+            .map(|cause| cause.to_string())
+            .collect::<Vec<_>>()
+            .join(": ");
         println!("⚠️  Skipped IDL generation: {full_message}");
         if full_message.contains("declare_id") {
             println!(

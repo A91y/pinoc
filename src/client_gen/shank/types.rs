@@ -82,13 +82,56 @@ pub fn safe_ident(name: &str) -> String {
 fn is_rust_keyword(name: &str) -> bool {
     matches!(
         name,
-        "as" | "break" | "const" | "continue" | "crate" | "dyn" | "else" | "enum"
-            | "extern" | "false" | "fn" | "for" | "if" | "impl" | "in" | "let"
-            | "loop" | "match" | "mod" | "move" | "mut" | "pub" | "ref" | "return"
-            | "self" | "Self" | "static" | "struct" | "super" | "trait" | "true"
-            | "type" | "unsafe" | "use" | "where" | "while" | "async" | "await"
-            | "abstract" | "become" | "box" | "do" | "final" | "macro" | "override"
-            | "priv" | "typeof" | "unsized" | "virtual" | "yield" | "try"
+        "as" | "break"
+            | "const"
+            | "continue"
+            | "crate"
+            | "dyn"
+            | "else"
+            | "enum"
+            | "extern"
+            | "false"
+            | "fn"
+            | "for"
+            | "if"
+            | "impl"
+            | "in"
+            | "let"
+            | "loop"
+            | "match"
+            | "mod"
+            | "move"
+            | "mut"
+            | "pub"
+            | "ref"
+            | "return"
+            | "self"
+            | "Self"
+            | "static"
+            | "struct"
+            | "super"
+            | "trait"
+            | "true"
+            | "type"
+            | "unsafe"
+            | "use"
+            | "where"
+            | "while"
+            | "async"
+            | "await"
+            | "abstract"
+            | "become"
+            | "box"
+            | "do"
+            | "final"
+            | "macro"
+            | "override"
+            | "priv"
+            | "typeof"
+            | "unsized"
+            | "virtual"
+            | "yield"
+            | "try"
     )
 }
 
@@ -121,8 +164,7 @@ pub fn render_type_body(name: &str, ty: &IdlTypeDefinitionTy) -> Result<(String,
                             .map(idl_type_to_rust)
                             .collect::<Result<Vec<_>>>()?;
                         referenced.extend(types.iter().cloned());
-                        variant_lines
-                            .push_str(&format!("    {vname}({}),\n", rendered.join(", ")));
+                        variant_lines.push_str(&format!("    {vname}({}),\n", rendered.join(", ")));
                     }
                     Some(EnumFields::Named(fields)) => {
                         let mut inner = Vec::new();

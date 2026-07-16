@@ -39,7 +39,10 @@ pub fn instruction_rs(ix: &IdlInstruction, generate_cpi: bool) -> Result<String>
         let acc_name = safe_ident(&acc.name.to_snake_case());
         fn_params.push_str(&format!("{acc_name}: solana_pubkey::Pubkey, "));
         let meta = if acc.is_mut {
-            format!("solana_instruction::AccountMeta::new({acc_name}, {})", acc.is_signer)
+            format!(
+                "solana_instruction::AccountMeta::new({acc_name}, {})",
+                acc.is_signer
+            )
         } else {
             format!(
                 "solana_instruction::AccountMeta::new_readonly({acc_name}, {})",

@@ -113,7 +113,10 @@ fn ensure_gitignored(pattern: &str) -> Result<()> {
     }
 
     let existing = fs::read_to_string(&gitignore_path).unwrap_or_default();
-    if existing.lines().any(|line| line.trim().trim_end_matches('/') == pattern.trim_end_matches('/')) {
+    if existing
+        .lines()
+        .any(|line| line.trim().trim_end_matches('/') == pattern.trim_end_matches('/'))
+    {
         return Ok(());
     }
 

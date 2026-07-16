@@ -76,9 +76,9 @@ fn item_has_codama_derive(item: &Item) -> bool {
         if !attr.path().is_ident("derive") {
             return false;
         }
-        let Ok(paths) = attr.parse_args_with(
-            syn::punctuated::Punctuated::<syn::Path, Token![,]>::parse_terminated,
-        ) else {
+        let Ok(paths) = attr
+            .parse_args_with(syn::punctuated::Punctuated::<syn::Path, Token![,]>::parse_terminated)
+        else {
             return false;
         };
         paths
@@ -89,7 +89,10 @@ fn item_has_codama_derive(item: &Item) -> bool {
 
 /// Runs Codama's extractor and injects `resolved_address`, since Codama's own
 /// `declare_id!` detection doesn't recognize Pinocchio's macro path.
-pub fn extract_native_codama_idl(crate_root: &Path, resolved_address: Option<&str>) -> Result<String> {
+pub fn extract_native_codama_idl(
+    crate_root: &Path,
+    resolved_address: Option<&str>,
+) -> Result<String> {
     let json = codama::Codama::load(crate_root)?.get_json_idl()?;
     let mut value: Value = serde_json::from_str(&json)?;
     if let Some(address) = resolved_address {

@@ -151,7 +151,11 @@ fn size_align(ty: &Type) -> Option<(usize, usize)> {
 }
 
 fn array_len(expr: &syn::Expr) -> Option<usize> {
-    if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Int(i), .. }) = expr {
+    if let syn::Expr::Lit(syn::ExprLit {
+        lit: syn::Lit::Int(i),
+        ..
+    }) = expr
+    {
         i.base10_parse::<usize>().ok()
     } else {
         None
