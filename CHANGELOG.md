@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- GitHub Actions CI (`.github/workflows/ci.yml`), run on pushes to `main` and on every pull request: `cargo build --locked` and `cargo fmt --all -- --check` as required checks, plus a non-blocking `cargo clippy --all-targets` job for informational lint results. A CI status badge is added to the README.
+
+### Changed
+- Repo-wide `cargo fmt` pass so the formatting check starts from a clean baseline.
+
 ## [0.2.0] - 2026-07-16
 
 ### Added

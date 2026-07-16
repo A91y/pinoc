@@ -3,6 +3,7 @@
   <h1>Pinoc</h1>
   <p><strong>Scaffold, build, and ship Solana Pinocchio programs, fast.</strong></p>
 
+[![CI](https://github.com/A91y/pinoc/actions/workflows/ci.yml/badge.svg)](https://github.com/A91y/pinoc/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/pinoc)](https://crates.io/crates/pinoc)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-yellow.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Rust](https://img.shields.io/badge/rust-1.70+-blue.svg)](https://www.rust-lang.org)
