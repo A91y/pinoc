@@ -14,6 +14,8 @@ pub struct PinocConfig {
     pub idl: IdlConfig,
     #[serde(default)]
     pub client: ClientConfig,
+    #[serde(default)]
+    pub check: CheckConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +39,19 @@ pub struct ClientConfig {
     pub shank_out_dir: Option<String>,
     #[serde(default)]
     pub codama_out_dir: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct CheckConfig {
+    #[serde(default)]
+    pub deny: Vec<String>,
+    #[serde(default)]
+    pub warn: Vec<String>,
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// "heuristic" | "likely" | "definite"; findings weaker than this are dropped.
+    #[serde(default)]
+    pub confidence_threshold: Option<String>,
 }
 
 /// Returns `None` (never errors) if `Pinoc.toml` is missing, so callers can

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `pinoc check`: a lint command for Solana-specific safety issues that rustc and clippy do not model (account validation, CPI, zero-copy layout). This lands the scaffolding only — the finding/lint contract, `Pinoc.toml` `[check]` config (`deny`/`warn`/`allow`/`confidence_threshold`), `--deny`/`--allow` flags (accepting `*` for all codes), inline `// pinoc:allow(CODE)` suppression, human and `--json` output, and the exit code (nonzero only when a surviving finding is `deny`). No checks are implemented yet; the command reports no issues until lints are added.
 - GitHub Actions CI (`.github/workflows/ci.yml`), run on pushes to `main` and on every pull request: `cargo build --locked` and `cargo fmt --all -- --check` as required checks, plus a non-blocking `cargo clippy --all-targets` job for informational lint results. A CI status badge is added to the README.
 
 ### Changed

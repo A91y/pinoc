@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+mod check;
 mod client_gen;
 mod commands;
 mod config;
@@ -98,6 +99,17 @@ enum Commands {
         #[command(subcommand)]
         command: ConfigCommands,
     },
+    Check {
+        #[arg(long, help = "Emit findings as JSON")]
+        json: bool,
+        #[arg(
+            long,
+            help = "Promote these lint codes to deny; `*` for all (repeatable)"
+        )]
+        deny: Vec<String>,
+        #[arg(long, help = "Suppress these lint codes; `*` for all (repeatable)")]
+        allow: Vec<String>,
+    },
     #[command(name = "--help")]
     Help,
 }
@@ -176,6 +188,10 @@ fn main() -> Result<()> {
                 commands::config::init_config(*yes)?;
             }
         },
+        Commands::Check { json, deny, allow } => {
+            let code = commands::check::run_check(*json, deny.clone(), allow.clone())?;
+            std::process::exit(code);
+        }
         Commands::Help => {
             commands::help::display_help_banner()?;
         }
