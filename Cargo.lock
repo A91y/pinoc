@@ -456,6 +456,7 @@ dependencies = [
  "codama",
  "dirs 6.0.0",
  "heck 0.5.0",
+ "proc-macro2",
  "serde",
  "serde_json",
  "shank_idl",

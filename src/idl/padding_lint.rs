@@ -49,14 +49,22 @@ fn scan(dir: &Path, out: &mut Vec<PaddingWarning>) -> Result<()> {
     Ok(())
 }
 
-fn is_repr_c(s: &ItemStruct) -> bool {
+pub(crate) fn is_repr_c(s: &ItemStruct) -> bool {
+    has_repr(s, "C")
+}
+
+pub(crate) fn is_repr_transparent(s: &ItemStruct) -> bool {
+    has_repr(s, "transparent")
+}
+
+fn has_repr(s: &ItemStruct, kind: &str) -> bool {
     s.attrs.iter().any(|a| {
         if !a.path().is_ident("repr") {
             return false;
         }
         let mut found = false;
         let _ = a.parse_nested_meta(|m| {
-            if m.path.is_ident("C") {
+            if m.path.is_ident(kind) {
                 found = true;
             }
             Ok(())
@@ -65,7 +73,7 @@ fn is_repr_c(s: &ItemStruct) -> bool {
     })
 }
 
-fn derives_shank_idl(s: &ItemStruct) -> bool {
+pub(crate) fn derives_shank_idl(s: &ItemStruct) -> bool {
     s.attrs.iter().any(|a| {
         if !a.path().is_ident("derive") {
             return false;
@@ -86,7 +94,7 @@ fn derives_shank_idl(s: &ItemStruct) -> bool {
 
 /// Returns a warning if `s`'s `#[repr(C)]` layout inserts padding, or `None`
 /// (padding-free, or a field type we can't reason about — conservatively quiet).
-fn check_padding(s: &ItemStruct) -> Option<PaddingWarning> {
+pub(crate) fn check_padding(s: &ItemStruct) -> Option<PaddingWarning> {
     let Fields::Named(fields) = &s.fields else {
         return None;
     };
