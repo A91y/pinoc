@@ -28,6 +28,16 @@ Each finding also carries a **severity** (`deny` fails the check, `warn` is advi
 
 Both anchor their finding at the struct's first attribute, so a suppression comment written directly above the item covers it.
 
+## Planned checks
+
+Not yet implemented; codes and intended severity are listed so the suppression contract is known in advance.
+
+| Code | id | Category | Severity | Flags |
+|---|---|---|---|---|
+| `ACC001-P` | `missing-owner` | ACC | deny | An account deserialized as this program's state without verifying `owner() == program_id`, letting an attacker pass a look-alike account they control. |
+| `CPI001-P` | `arbitrary-cpi` | CPI | deny | `invoke`/`invoke_signed` to a caller-supplied program account never checked against an expected id, letting an attacker redirect the call to malicious code. |
+| `ZC002-P` | `unchecked-length-before-cast` | ZC | deny | Account data cast to a type (`from_bytes`, pointer cast, `borrow_data_unchecked`) without a preceding `data_len() >= size_of::<T>()` guard, a buffer over-read. |
+
 ## Configuration
 
 `Pinoc.toml`:
