@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `pinoc check`'s `--deny`/`--allow` accept `all` (an unquoted-safe alias for `*`) and multiple space-separated codes (`--deny ZC001-P ZC003-P`). Any value that is not a real lint code or `*`/`all` is rejected with a clear error, so a typo or a bare `--deny *` (which the shell expands into filenames before pinoc sees it) fails loudly instead of silently doing nothing.
+
 ## [0.2.1] - 2026-07-18
 
 ### Added

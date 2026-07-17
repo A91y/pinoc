@@ -58,7 +58,7 @@ pinoc check --allow ZC001-P  # suppress a code for this run
 pinoc check --deny '*'       # every code fails (quote so the shell keeps the *)
 ```
 
-`*` matches all codes in any of the deny, warn, allow lists, and in the inline comment.
+`*` or `all` targets every code in the deny, warn, and allow lists (`*` also works in the inline comment). Space-separated values work too (`--deny ZC001-P ZC003-P`). Any value that is not a real code or `*`/`all` is rejected, so a typo or a bare `--deny *` (which the shell expands into filenames) fails with a clear error; quote it as `--deny '*'` or use `--deny all`.
 
 ## Suppression
 

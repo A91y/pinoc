@@ -25,13 +25,16 @@ pub(crate) struct EffectiveConfig {
 pub fn run(opts: CheckOptions) -> Result<i32> {
     let cfg = load_effective_config(&opts)?;
 
+    let lints = lints::registry();
+    let known: Vec<&'static str> = lints.iter().map(|l| l.code()).collect();
+    reject_unknown_codes(&cfg, &known)?;
+
     let src_dir = Path::new("src");
     let mut files = Vec::new();
     if src_dir.exists() {
         collect_rs_files(src_dir, &mut files)?;
     }
 
-    let lints = lints::registry();
     let mut raw = Vec::new();
     let mut supp = Suppressions::default();
     for path in &files {
@@ -125,9 +128,29 @@ fn load_effective_config(opts: &CheckOptions) -> Result<EffectiveConfig> {
     })
 }
 
-/// A code list matches a finding's code exactly, or via `*` (all codes).
+/// A code list matches a finding's code exactly, or via `*`/`all` (every code).
 fn code_matches(list: &[String], code: &str) -> bool {
-    list.iter().any(|c| c == "*" || c == code)
+    list.iter().any(|c| is_wildcard(c) || c == code)
+}
+
+fn is_wildcard(code: &str) -> bool {
+    code == "*" || code == "all"
+}
+
+/// Rejects any deny/warn/allow value that is neither a real lint code nor
+/// `*`/`all`. This blocks typos and a bare `--deny *` (which the shell expands
+/// into filenames before pinoc runs) with one clear error.
+fn reject_unknown_codes(cfg: &EffectiveConfig, known: &[&'static str]) -> Result<()> {
+    let has_unknown = [&cfg.deny, &cfg.warn, &cfg.allow]
+        .into_iter()
+        .flatten()
+        .any(|c| !is_wildcard(c) && !known.contains(&c.as_str()));
+    if has_unknown {
+        anyhow::bail!(
+            "a --deny/--allow value is not a lint code. Pass a real code (e.g. `ACC001-P`), or `all`/`'*'` for every code (quote `*` so the shell does not expand it into filenames)."
+        );
+    }
+    Ok(())
 }
 
 fn parse_confidence(s: Option<&str>) -> Confidence {
