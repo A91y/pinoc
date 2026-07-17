@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-18
+
 ### Added
 - `pinoc check`: a lint command for Solana-specific safety issues that rustc and clippy do not model (account validation, CPI, zero-copy layout). This lands the scaffolding only — the finding/lint contract, `Pinoc.toml` `[check]` config (`deny`/`warn`/`allow`/`confidence_threshold`), `--deny`/`--allow` flags (accepting `*` for all codes), inline `// pinoc:allow(CODE)` suppression, human and `--json` output, and the exit code (nonzero only when a surviving finding is `deny`). No checks are implemented yet; the command reports no issues until lints are added.
 - First `pinoc check` lints, both zero-copy layout checks: `ZC001-P` (`layout-padding-mismatch`, `warn`) flags a `#[repr(C)]` `ShankAccount`/`ShankType` struct whose padded layout differs from its packed borsh layout (shares the layout analysis already used by the IDL padding warning); it is advisory because it only affects the generated borsh client. `ZC003-P` (`missing-repr-c`, `deny`) flags such a struct that lacks `#[repr(C)]`/`#[repr(transparent)]`, where the default layout is unspecified.
