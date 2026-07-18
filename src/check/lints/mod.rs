@@ -1,3 +1,4 @@
+mod acc001_owner;
 mod zc001_padding;
 mod zc003_repr_c;
 
@@ -7,6 +8,7 @@ use syn::spanned::Spanned;
 /// All registered lints.
 pub fn registry() -> Vec<Box<dyn Lint>> {
     vec![
+        Box::new(acc001_owner::Acc001Owner),
         Box::new(zc001_padding::Zc001Padding),
         Box::new(zc003_repr_c::Zc003ReprC),
     ]

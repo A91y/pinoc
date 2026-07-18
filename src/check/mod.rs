@@ -1,4 +1,5 @@
 pub mod contract;
+pub mod facts;
 pub mod lints;
 pub mod output;
 pub mod suppress;
