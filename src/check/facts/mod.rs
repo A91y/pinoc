@@ -50,6 +50,9 @@ pub struct AccountBinding {
     pub delegated: bool,
     /// Span of the first use that reads the account's data, for finding location.
     pub read_span: Option<proc_macro2::Span>,
+    /// Span of the comparison of this key against an authority-named field/var
+    /// (the account acts as an authority); `None` if there is no such comparison.
+    pub authority_span: Option<proc_macro2::Span>,
 }
 
 impl AccountBinding {
@@ -61,6 +64,7 @@ impl AccountBinding {
             uses: HashSet::new(),
             delegated: false,
             read_span: None,
+            authority_span: None,
         }
     }
 
@@ -324,20 +328,19 @@ impl<'ast> Visit<'ast> for Extractor {
 
     fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
         if matches!(node.op, syn::BinOp::Eq(_) | syn::BinOp::Ne(_)) {
-            for side in [node.left.as_ref(), node.right.as_ref()] {
-                if let Some(idx) = self.key_call_binding(side) {
-                    self.bindings[idx]
-                        .validations
-                        .insert(Validation::KeyCompared);
-                }
-            }
+            self.note_comparison(&node.left, &node.right, node.span());
         }
         syn::visit::visit_expr_binary(self, node);
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
+        let method = node.method.to_string();
+        if method == "eq" || method == "ne" {
+            if let Some(arg) = node.args.first() {
+                self.note_comparison(&node.receiver, arg, node.span());
+            }
+        }
         if let Some(idx) = self.resolve(&node.receiver) {
-            let method = node.method.to_string();
             if let Some(v) = validation_for_method(&method) {
                 self.bindings[idx].validations.insert(v);
             } else if let Some(u) = borrow_use_for_method(&method) {
@@ -457,6 +460,21 @@ impl Extractor {
         }
     }
 
+    /// Record a key comparison `a <cmp> b`: mark the key side `KeyCompared`, and if
+    /// the other side names an authority field/var, mark it an authority position.
+    fn note_comparison(&mut self, a: &syn::Expr, b: &syn::Expr, span: proc_macro2::Span) {
+        for (side, other) in [(a, b), (b, a)] {
+            if let Some(idx) = self.key_call_binding(side) {
+                self.bindings[idx]
+                    .validations
+                    .insert(Validation::KeyCompared);
+                if self.bindings[idx].authority_span.is_none() && is_authority_ref(other) {
+                    self.bindings[idx].authority_span = Some(span);
+                }
+            }
+        }
+    }
+
     /// Binding index of `<account>.key()`/`.address()`, else `None`.
     fn key_call_binding(&self, expr: &syn::Expr) -> Option<usize> {
         if let syn::Expr::MethodCall(m) = peel(expr) {
@@ -515,6 +533,31 @@ fn peel(expr: &syn::Expr) -> &syn::Expr {
         }) => peel(expr),
         _ => expr,
     }
+}
+
+/// Whether `expr` names an authority field/var (`state.authority`, `mint_auth`), the
+/// value an account's key is compared against.
+fn is_authority_ref(expr: &syn::Expr) -> bool {
+    match peel(expr) {
+        syn::Expr::Field(f) => {
+            matches!(&f.member, syn::Member::Named(id) if is_authority_name(&id.to_string()))
+        }
+        syn::Expr::MethodCall(m) => is_authority_name(&m.method.to_string()),
+        syn::Expr::Path(p) => p
+            .path
+            .segments
+            .last()
+            .is_some_and(|s| is_authority_name(&s.ident.to_string())),
+        _ => false,
+    }
+}
+
+fn is_authority_name(name: &str) -> bool {
+    name == "authority"
+        || name == "admin"
+        || name == "auth"
+        || name.ends_with("_authority")
+        || name.ends_with("_auth")
 }
 
 /// The struct literal if `expr` is an `Instruction`/`InstructionView { … }`.
