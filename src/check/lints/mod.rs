@@ -1,4 +1,9 @@
+mod acc001_owner;
+mod acc002_signer;
+mod acc003_confusion;
+mod cpi001_arbitrary_cpi;
 mod zc001_padding;
+mod zc002_length;
 mod zc003_repr_c;
 
 use crate::check::contract::{Lint, Span};
@@ -7,7 +12,15 @@ use syn::spanned::Spanned;
 /// All registered lints.
 pub fn registry() -> Vec<Box<dyn Lint>> {
     vec![
+        // Account lints
+        Box::new(acc001_owner::Acc001Owner),
+        Box::new(acc002_signer::Acc002Signer),
+        Box::new(acc003_confusion::Acc003Confusion),
+        // CPI lints
+        Box::new(cpi001_arbitrary_cpi::Cpi001ArbitraryCpi),
+        // Struct-layout lints
         Box::new(zc001_padding::Zc001Padding),
+        Box::new(zc002_length::Zc002Length),
         Box::new(zc003_repr_c::Zc003ReprC),
     ]
 }

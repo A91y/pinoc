@@ -104,10 +104,15 @@ enum Commands {
         json: bool,
         #[arg(
             long,
-            help = "Promote these lint codes to deny; `*` for all (repeatable)"
+            num_args = 1..,
+            help = "Promote these lint codes to deny; `*` or `all` for every code"
         )]
         deny: Vec<String>,
-        #[arg(long, help = "Suppress these lint codes; `*` for all (repeatable)")]
+        #[arg(
+            long,
+            num_args = 1..,
+            help = "Suppress these lint codes; `*` or `all` for every code"
+        )]
         allow: Vec<String>,
     },
     #[command(name = "--help")]

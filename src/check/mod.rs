@@ -1,4 +1,5 @@
 pub mod contract;
+pub mod facts;
 pub mod lints;
 pub mod output;
 pub mod suppress;
@@ -16,14 +17,49 @@ pub struct CheckOptions {
 }
 
 pub(crate) struct EffectiveConfig {
+    // From `Pinoc.toml [check]`.
     pub deny: Vec<String>,
     pub warn: Vec<String>,
     pub allow: Vec<String>,
+    // From `--deny`/`--allow`; these override the config file per code.
+    pub cli_deny: Vec<String>,
+    pub cli_allow: Vec<String>,
     pub threshold: Confidence,
+}
+
+/// Effective disposition of one lint code.
+enum Disposition {
+    Allow,
+    Deny,
+    Warn,
+    Default,
+}
+
+/// CLI flags override the config file; within a layer `allow` beats `deny`. A
+/// `*`/`all` wildcard only matches in its own layer, so a specific `--deny X`
+/// still overrides a config `allow = ["*"]`.
+fn resolve(cfg: &EffectiveConfig, code: &str) -> Disposition {
+    if code_matches(&cfg.cli_allow, code) {
+        Disposition::Allow
+    } else if code_matches(&cfg.cli_deny, code) {
+        Disposition::Deny
+    } else if code_matches(&cfg.allow, code) {
+        Disposition::Allow
+    } else if code_matches(&cfg.deny, code) {
+        Disposition::Deny
+    } else if code_matches(&cfg.warn, code) {
+        Disposition::Warn
+    } else {
+        Disposition::Default
+    }
 }
 
 pub fn run(opts: CheckOptions) -> Result<i32> {
     let cfg = load_effective_config(&opts)?;
+
+    let lints = lints::registry();
+    let known: Vec<&'static str> = lints.iter().map(|l| l.code()).collect();
+    reject_unknown_codes(&cfg, &known)?;
 
     let src_dir = Path::new("src");
     let mut files = Vec::new();
@@ -31,7 +67,6 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
         collect_rs_files(src_dir, &mut files)?;
     }
 
-    let lints = lints::registry();
     let mut raw = Vec::new();
     let mut supp = Suppressions::default();
     for path in &files {
@@ -50,39 +85,57 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
         }
     }
 
-    let (findings, exit_code) = process_findings(raw, &cfg, &mut supp);
+    let processed = process_findings(raw, &cfg, &mut supp);
     if opts.json {
-        output::render_json(&findings)?;
+        output::render_json(&processed.findings)?;
     } else {
-        output::render_human(&findings);
+        output::render_human(
+            &processed.findings,
+            processed.below_threshold,
+            cfg.threshold,
+        );
     }
-    Ok(exit_code)
+    Ok(processed.exit_code)
+}
+
+/// Outcome of applying config and suppression to the raw findings.
+pub(crate) struct Processed {
+    pub findings: Vec<Finding>,
+    pub exit_code: i32,
+    /// Findings dropped only because their confidence is below the threshold.
+    pub below_threshold: usize,
 }
 
 /// Applies config severity, inline suppression, and the confidence threshold to
-/// raw findings; appends unused-allow findings; returns the survivors and the
-/// exit code (nonzero iff any survivor is `Deny`).
+/// raw findings; appends unused-allow findings; returns the survivors, the exit
+/// code (nonzero iff any survivor is `Deny`), and how many were hidden by the
+/// threshold.
 pub(crate) fn process_findings(
     raw: Vec<Finding>,
     cfg: &EffectiveConfig,
     supp: &mut Suppressions,
-) -> (Vec<Finding>, i32) {
+) -> Processed {
     let mut out = Vec::new();
+    let mut below_threshold = 0;
     for mut f in raw {
-        if code_matches(&cfg.allow, f.code) {
-            continue;
-        }
-        let denied = code_matches(&cfg.deny, f.code);
-        if denied {
-            f.severity = Severity::Deny;
-        } else if code_matches(&cfg.warn, f.code) {
-            f.severity = Severity::Warn;
-        }
+        let denied = match resolve(cfg, f.code) {
+            Disposition::Allow => continue,
+            Disposition::Deny => {
+                f.severity = Severity::Deny;
+                true
+            }
+            Disposition::Warn => {
+                f.severity = Severity::Warn;
+                false
+            }
+            Disposition::Default => false,
+        };
         if supp.is_suppressed(&f.span.file, f.span.line, f.code) {
             continue;
         }
         // A weak finding survives the threshold only when explicitly denied.
         if f.confidence < cfg.threshold && !denied {
+            below_threshold += 1;
             continue;
         }
         out.push(f);
@@ -105,29 +158,56 @@ pub(crate) fn process_findings(
     }
 
     let exit_code = i32::from(out.iter().any(|f| f.severity == Severity::Deny));
-    (out, exit_code)
+    Processed {
+        findings: out,
+        exit_code,
+        below_threshold,
+    }
 }
 
 fn load_effective_config(opts: &CheckOptions) -> Result<EffectiveConfig> {
     let check = config::read_pinoc_config_optional()?
         .map(|c| c.check)
         .unwrap_or_default();
-    let mut deny = check.deny;
-    deny.extend(opts.deny.iter().cloned());
-    let mut allow = check.allow;
-    allow.extend(opts.allow.iter().cloned());
-    let threshold = parse_confidence(check.confidence_threshold.as_deref());
     Ok(EffectiveConfig {
-        deny,
+        deny: check.deny,
         warn: check.warn,
-        allow,
-        threshold,
+        allow: check.allow,
+        cli_deny: opts.deny.clone(),
+        cli_allow: opts.allow.clone(),
+        threshold: parse_confidence(check.confidence_threshold.as_deref()),
     })
 }
 
-/// A code list matches a finding's code exactly, or via `*` (all codes).
+/// A code list matches a finding's code exactly, or via `*`/`all` (every code).
 fn code_matches(list: &[String], code: &str) -> bool {
-    list.iter().any(|c| c == "*" || c == code)
+    list.iter().any(|c| is_wildcard(c) || c == code)
+}
+
+fn is_wildcard(code: &str) -> bool {
+    code == "*" || code == "all"
+}
+
+/// Rejects any deny/warn/allow value that is neither a real lint code nor
+/// `*`/`all`. This blocks typos and a bare `--deny *` (which the shell expands
+/// into filenames before pinoc runs) with one clear error.
+fn reject_unknown_codes(cfg: &EffectiveConfig, known: &[&'static str]) -> Result<()> {
+    let has_unknown = [
+        &cfg.deny,
+        &cfg.warn,
+        &cfg.allow,
+        &cfg.cli_deny,
+        &cfg.cli_allow,
+    ]
+    .into_iter()
+    .flatten()
+    .any(|c| !is_wildcard(c) && !known.contains(&c.as_str()));
+    if has_unknown {
+        anyhow::bail!(
+            "a --deny/--allow value is not a lint code. Pass a real code (e.g. `ACC001-P`), or `all`/`'*'` for every code (quote `*` so the shell does not expand it into filenames)."
+        );
+    }
+    Ok(())
 }
 
 fn parse_confidence(s: Option<&str>) -> Confidence {
