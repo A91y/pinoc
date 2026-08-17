@@ -102,6 +102,16 @@ pub struct Vault { /* ... */ }
 
 The process exits `1` if any surviving finding is `deny`, else `0`. Advisory findings never change the exit code unless explicitly denied. Human output groups findings with their code, `file:line:col`, evidence, and fix; `--json` emits the same findings as a stable array (the JSON shape is frozen).
 
+### The "below the threshold" line
+
+When `confidence_threshold` drops one or more findings for being too low-confidence (see [Configuration](#configuration)), the human output prints a trailing line so the hidden count is never silent:
+
+```
+N lower-confidence finding(s) below the `<threshold>` threshold hidden; lower `confidence_threshold` (or `--deny <code>`) to show them.
+```
+
+It means exactly `N` findings *were produced* but held back because their confidence is weaker than the active `confidence_threshold` (for example, a `heuristic` lint like `ACC003-P` under the default `likely` threshold). They are not failures and never affect the exit code. To see them, lower `confidence_threshold` (e.g. to `heuristic`) so they print at their natural severity, or `--deny <code>` a specific one to force it through (which also makes it fail the check). The count only includes findings hidden by the threshold, not ones you silenced with `allow`/`--allow` or an inline `// pinoc:allow`. This line appears in human output only; the threshold applies to `--json` too, so its array already excludes the hidden findings (lower `confidence_threshold` to include them).
+
 ## Module map
 
 | Path | Responsibility |

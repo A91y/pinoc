@@ -54,24 +54,38 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
         }
     }
 
-    let (findings, exit_code) = process_findings(raw, &cfg, &mut supp);
+    let processed = process_findings(raw, &cfg, &mut supp);
     if opts.json {
-        output::render_json(&findings)?;
+        output::render_json(&processed.findings)?;
     } else {
-        output::render_human(&findings);
+        output::render_human(
+            &processed.findings,
+            processed.below_threshold,
+            cfg.threshold,
+        );
     }
-    Ok(exit_code)
+    Ok(processed.exit_code)
+}
+
+/// Outcome of applying config and suppression to the raw findings.
+pub(crate) struct Processed {
+    pub findings: Vec<Finding>,
+    pub exit_code: i32,
+    /// Findings dropped only because their confidence is below the threshold.
+    pub below_threshold: usize,
 }
 
 /// Applies config severity, inline suppression, and the confidence threshold to
-/// raw findings; appends unused-allow findings; returns the survivors and the
-/// exit code (nonzero iff any survivor is `Deny`).
+/// raw findings; appends unused-allow findings; returns the survivors, the exit
+/// code (nonzero iff any survivor is `Deny`), and how many were hidden by the
+/// threshold.
 pub(crate) fn process_findings(
     raw: Vec<Finding>,
     cfg: &EffectiveConfig,
     supp: &mut Suppressions,
-) -> (Vec<Finding>, i32) {
+) -> Processed {
     let mut out = Vec::new();
+    let mut below_threshold = 0;
     for mut f in raw {
         if code_matches(&cfg.allow, f.code) {
             continue;
@@ -87,6 +101,7 @@ pub(crate) fn process_findings(
         }
         // A weak finding survives the threshold only when explicitly denied.
         if f.confidence < cfg.threshold && !denied {
+            below_threshold += 1;
             continue;
         }
         out.push(f);
@@ -109,7 +124,11 @@ pub(crate) fn process_findings(
     }
 
     let exit_code = i32::from(out.iter().any(|f| f.severity == Severity::Deny));
-    (out, exit_code)
+    Processed {
+        findings: out,
+        exit_code,
+        below_threshold,
+    }
 }
 
 fn load_effective_config(opts: &CheckOptions) -> Result<EffectiveConfig> {
