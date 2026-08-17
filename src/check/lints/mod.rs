@@ -1,5 +1,6 @@
 mod acc001_owner;
 mod zc001_padding;
+mod zc002_length;
 mod zc003_repr_c;
 
 use crate::check::contract::{Lint, Span};
@@ -10,6 +11,7 @@ pub fn registry() -> Vec<Box<dyn Lint>> {
     vec![
         Box::new(acc001_owner::Acc001Owner),
         Box::new(zc001_padding::Zc001Padding),
+        Box::new(zc002_length::Zc002Length),
         Box::new(zc003_repr_c::Zc003ReprC),
     ]
 }

@@ -25,6 +25,7 @@ pub enum Validation {
     Writable,
     Uninitialized,
     Discriminator,
+    LengthChecked,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -66,6 +67,20 @@ impl AccountBinding {
             .iter()
             .any(|u| matches!(u, Use::BorrowData { .. } | Use::DeserializeState(_)))
     }
+
+    /// The account's data is borrowed through an `*_unchecked` accessor, which
+    /// skips the safe path's bounds handling.
+    pub fn unchecked_read(&self) -> bool {
+        self.uses.iter().any(|u| {
+            matches!(
+                u,
+                Use::BorrowData {
+                    unchecked: true,
+                    ..
+                }
+            )
+        })
+    }
 }
 
 pub struct Handler {
@@ -105,6 +120,7 @@ fn validation_for_method(name: &str) -> Option<Validation> {
         "key" | "address" => Validation::Key,
         "is_writable" => Validation::Writable,
         "is_data_empty" | "data_is_empty" => Validation::Uninitialized,
+        "data_len" => Validation::LengthChecked,
         _ => return None,
     })
 }
@@ -260,6 +276,7 @@ impl Extractor {
                     ("is_writable", Validation::Writable),
                     ("is_data_empty", Validation::Uninitialized),
                     ("data_is_empty", Validation::Uninitialized),
+                    ("data_len", Validation::LengthChecked),
                 ] {
                     if text.contains(&format!("{name} . {method}")) {
                         self.bindings[i].validations.insert(val.clone());

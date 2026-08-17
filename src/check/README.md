@@ -25,6 +25,7 @@ Each finding also carries a **severity** (`deny` fails the check, `warn` is advi
 |---|---|---|---|---|
 | `ACC001-P` | `missing-owner` | deny | likely | An account read as this program's state (data borrowed, or passed to a loader like `Type::load`/`from_bytes`) without checking `owner() == program_id`, letting an attacker pass a look-alike account. Runs on the per-account fact table (`facts/`); an account passed to a function the analyzer cannot see into is treated as delegated and left alone. Fix: check the owner before reading the account's data. |
 | `ZC001-P` | `layout-padding-mismatch` | warn | likely | A `#[repr(C)]` `ShankAccount`/`ShankType` struct whose padded in-memory layout differs from its packed borsh layout, so on-chain zero-copy reads and client (de)serialization disagree. Advisory because it only affects the generated borsh client; a program driven another way is unaffected. Reuses the layout analysis behind the `pinoc build`/`pinoc idl` padding warning. Fix: add explicit `_padding: [u8; N]` fields, or `--deny ZC001-P` to make it blocking. |
+| `ZC002-P` | `unchecked-length-before-cast` | deny | likely | An account whose data is borrowed through an `*_unchecked` accessor (`borrow_data_unchecked`/`borrow_mut_data_unchecked`) with no `data_len()` guard on that account, so a shorter-than-expected account is read past its end. Runs on the per-account fact table (`facts/`); if the account's `data_len()` is read anywhere in the handler it is treated as guarded, and a delegated account is left alone. Fix: check `data_len() >= size_of::<T>()` before the unchecked borrow. |
 | `ZC003-P` | `missing-repr-c` | deny | definite | A `ShankAccount`/`ShankType` struct read zero-copy without `#[repr(C)]` or `#[repr(transparent)]`. The default layout may reorder fields and break the byte mapping the client relies on. Fix: add `#[repr(C)]`. |
 
 Both anchor their finding at the struct's first attribute, so a suppression comment written directly above the item covers it.
@@ -36,7 +37,6 @@ Not yet implemented; codes and intended severity are listed so the suppression c
 | Code | id | Category | Severity | Flags |
 |---|---|---|---|---|
 | `CPI001-P` | `arbitrary-cpi` | CPI | deny | `invoke`/`invoke_signed` to a caller-supplied program account never checked against an expected id, letting an attacker redirect the call to malicious code. |
-| `ZC002-P` | `unchecked-length-before-cast` | ZC | deny | Account data cast to a type (`from_bytes`, pointer cast, `borrow_data_unchecked`) without a preceding `data_len() >= size_of::<T>()` guard, a buffer over-read. |
 
 ## Configuration
 
@@ -87,4 +87,4 @@ The process exits `1` if any surviving finding is `deny`, else `0`. Advisory fin
 | `output.rs` | Human and `--json` renderers. |
 | `facts/mod.rs` | Per-account fact table: for each handler, how each account is validated and used. Account/CPI lints run on this. |
 | `lints/mod.rs` | The lint registry and span helpers. |
-| `lints/acc001_owner.rs`, `lints/zc001_padding.rs`, `lints/zc003_repr_c.rs` | The individual checks. |
+| `lints/acc001_owner.rs`, `lints/zc001_padding.rs`, `lints/zc002_length.rs`, `lints/zc003_repr_c.rs` | The individual checks. |

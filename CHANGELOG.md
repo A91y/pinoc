@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `pinoc check`'s `--deny`/`--allow` accept `all` (an unquoted-safe alias for `*`) and multiple space-separated codes (`--deny ZC001-P ZC003-P`). Any value that is not a real lint code or `*`/`all` is rejected with a clear error, so a typo or a bare `--deny *` (which the shell expands into filenames before pinoc sees it) fails loudly instead of silently doing nothing.
 - `pinoc check` gains a per-account fact-table engine and its first account-flow lint, `ACC001-P` (`missing-owner`, `deny`): flags an account read as program state (data borrowed, or passed to a loader like `Type::load`/`from_bytes`) without checking `owner() == program_id`. The engine tracks how each account in a handler is validated and used; an account passed to a function it cannot analyze is treated as delegated and left alone, and owner checks written inside macros (`assert_eq!`, `require!`) are recognized, to keep false positives low.
+- `ZC002-P` (`unchecked-length-before-cast`, `deny`): flags an account whose data is borrowed through an `*_unchecked` accessor (`borrow_data_unchecked`/`borrow_mut_data_unchecked`) with no `data_len()` guard on that account, a buffer over-read when a shorter-than-expected account is passed. Runs on the same fact-table engine; if the account's `data_len()` is read anywhere in the handler it is treated as guarded, and a delegated account is left alone.
 
 ## [0.2.1] - 2026-07-18
 
