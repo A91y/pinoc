@@ -1,4 +1,5 @@
 mod acc001_owner;
+mod cpi001_arbitrary_cpi;
 mod zc001_padding;
 mod zc002_length;
 mod zc003_repr_c;
@@ -9,7 +10,11 @@ use syn::spanned::Spanned;
 /// All registered lints.
 pub fn registry() -> Vec<Box<dyn Lint>> {
     vec![
+        // Account lints
         Box::new(acc001_owner::Acc001Owner),
+        // CPI lints
+        Box::new(cpi001_arbitrary_cpi::Cpi001ArbitraryCpi),
+        // Struct-layout lints
         Box::new(zc001_padding::Zc001Padding),
         Box::new(zc002_length::Zc002Length),
         Box::new(zc003_repr_c::Zc003ReprC),

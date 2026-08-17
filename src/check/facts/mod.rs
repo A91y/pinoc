@@ -22,6 +22,8 @@ pub enum Validation {
     Signer,
     Owner,
     Key,
+    /// Key compared (`==`/`!=` or in a macro), not merely read like `Key`.
+    KeyCompared,
     Writable,
     Uninitialized,
     Discriminator,
@@ -86,6 +88,14 @@ impl AccountBinding {
 pub struct Handler {
     pub name: String,
     pub bindings: Vec<AccountBinding>,
+    pub cpi_sites: Vec<CpiSite>,
+}
+
+/// One `invoke`/`invoke_signed` call site.
+pub struct CpiSite {
+    /// Binding whose key feeds the program id; `None` for a constant/param id.
+    pub program_binding: Option<usize>,
+    pub span: proc_macro2::Span,
 }
 
 const ACCOUNT_SLICE_TYPES: &[&str] = &["AccountInfo", "AccountView"];
@@ -112,6 +122,7 @@ const SYSVAR_TYPES: &[&str] = &[
     "LastRestartSlot",
 ];
 const CPI_FUNCS: &[&str] = &["invoke", "invoke_signed"];
+const INSTRUCTION_TYPES: &[&str] = &["Instruction", "InstructionView"];
 
 fn validation_for_method(name: &str) -> Option<Validation> {
     Some(match name {
@@ -210,12 +221,15 @@ fn extract_handler(name: &str, accounts_param: String, block: &syn::Block) -> Ha
         index: HashMap::new(),
         aliases: HashMap::new(),
         macro_texts: Vec::new(),
+        instr_programs: HashMap::new(),
+        cpi_sites: Vec::new(),
     };
     ex.visit_block(block);
     ex.apply_macro_validations();
     Handler {
         name: name.to_string(),
         bindings: ex.bindings,
+        cpi_sites: ex.cpi_sites,
     }
 }
 
@@ -225,6 +239,9 @@ struct Extractor {
     index: HashMap<String, usize>,
     aliases: HashMap<String, String>,
     macro_texts: Vec<String>,
+    /// `let ix = InstructionView { … }` local name → its program-id source.
+    instr_programs: HashMap<String, Option<usize>>,
+    cpi_sites: Vec<CpiSite>,
 }
 
 impl Extractor {
@@ -272,6 +289,9 @@ impl Extractor {
                     ("owner", Validation::Owner),
                     ("key", Validation::Key),
                     ("address", Validation::Key),
+                    // A key in a macro is almost always a comparison.
+                    ("key", Validation::KeyCompared),
+                    ("address", Validation::KeyCompared),
                     ("is_signer", Validation::Signer),
                     ("is_writable", Validation::Writable),
                     ("is_data_empty", Validation::Uninitialized),
@@ -291,8 +311,28 @@ impl<'ast> Visit<'ast> for Extractor {
     fn visit_local(&mut self, local: &'ast syn::Local) {
         if let Some(init) = &local.init {
             self.discover_binding(&local.pat, &init.expr);
+            // Record a `let ix = InstructionView { … }` so a later invoke resolves it.
+            if let syn::Pat::Ident(p) = &local.pat {
+                if let Some(s) = as_instruction_struct(&init.expr) {
+                    let src = self.struct_program_binding(s);
+                    self.instr_programs.insert(p.ident.to_string(), src);
+                }
+            }
         }
         syn::visit::visit_local(self, local);
+    }
+
+    fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
+        if matches!(node.op, syn::BinOp::Eq(_) | syn::BinOp::Ne(_)) {
+            for side in [node.left.as_ref(), node.right.as_ref()] {
+                if let Some(idx) = self.key_call_binding(side) {
+                    self.bindings[idx]
+                        .validations
+                        .insert(Validation::KeyCompared);
+                }
+            }
+        }
+        syn::visit::visit_expr_binary(self, node);
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
@@ -377,13 +417,18 @@ impl Extractor {
             return;
         };
 
-        // `invoke`/`invoke_signed(...)`: account args are CPI accounts.
+        // `invoke`/`invoke_signed(...)`: mark CPI accounts, record the callee.
         if type_seg.is_none() && CPI_FUNCS.contains(&fn_seg.as_str()) {
             for arg in &node.args {
                 if let Some(idx) = self.resolve(arg) {
                     self.bindings[idx].uses.insert(Use::CpiAccount);
                 }
             }
+            let program_binding = node.args.first().and_then(|a| self.cpi_program_binding(a));
+            self.cpi_sites.push(CpiSite {
+                program_binding,
+                span: node.span(),
+            });
             return;
         }
 
@@ -411,6 +456,42 @@ impl Extractor {
             }
         }
     }
+
+    /// Binding index of `<account>.key()`/`.address()`, else `None`.
+    fn key_call_binding(&self, expr: &syn::Expr) -> Option<usize> {
+        if let syn::Expr::MethodCall(m) = peel(expr) {
+            let method = m.method.to_string();
+            if method == "key" || method == "address" {
+                return self.resolve(&m.receiver);
+            }
+        }
+        None
+    }
+
+    /// Program-id source of an invoke's first arg (inline struct or a local).
+    fn cpi_program_binding(&self, arg0: &syn::Expr) -> Option<usize> {
+        if let Some(s) = as_instruction_struct(arg0) {
+            return self.struct_program_binding(s);
+        }
+        if let syn::Expr::Path(p) = peel(arg0) {
+            if let Some(id) = p.path.get_ident() {
+                return self.instr_programs.get(&id.to_string()).copied().flatten();
+            }
+        }
+        None
+    }
+
+    /// The account binding feeding an instruction struct's `program_id` field.
+    fn struct_program_binding(&self, s: &syn::ExprStruct) -> Option<usize> {
+        for fv in &s.fields {
+            if let syn::Member::Named(id) = &fv.member {
+                if id == "program_id" {
+                    return self.key_call_binding(&fv.expr);
+                }
+            }
+        }
+        None
+    }
 }
 
 fn strip_ref(expr: &syn::Expr) -> &syn::Expr {
@@ -419,6 +500,32 @@ fn strip_ref(expr: &syn::Expr) -> &syn::Expr {
         syn::Expr::Paren(p) => strip_ref(&p.expr),
         _ => expr,
     }
+}
+
+/// Peels references, parens, groups, and derefs to the inner expression.
+fn peel(expr: &syn::Expr) -> &syn::Expr {
+    match expr {
+        syn::Expr::Reference(r) => peel(&r.expr),
+        syn::Expr::Paren(p) => peel(&p.expr),
+        syn::Expr::Group(g) => peel(&g.expr),
+        syn::Expr::Unary(syn::ExprUnary {
+            op: syn::UnOp::Deref(_),
+            expr,
+            ..
+        }) => peel(expr),
+        _ => expr,
+    }
+}
+
+/// The struct literal if `expr` is an `Instruction`/`InstructionView { … }`.
+fn as_instruction_struct(expr: &syn::Expr) -> Option<&syn::ExprStruct> {
+    if let syn::Expr::Struct(s) = peel(expr) {
+        let last = s.path.segments.last()?;
+        if INSTRUCTION_TYPES.contains(&last.ident.to_string().as_str()) {
+            return Some(s);
+        }
+    }
+    None
 }
 
 fn strip_try(expr: &syn::Expr) -> &syn::Expr {

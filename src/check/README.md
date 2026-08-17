@@ -24,11 +24,12 @@ Each finding also carries a **severity** (`deny` fails the check, `warn` is advi
 | Code | id | Severity | Confidence | Flags |
 |---|---|---|---|---|
 | `ACC001-P` | `missing-owner` | deny | likely | An account read as this program's state (data borrowed, or passed to a loader like `Type::load`/`from_bytes`) without checking `owner() == program_id`, letting an attacker pass a look-alike account. Runs on the per-account fact table (`facts/`); an account passed to a function the analyzer cannot see into is treated as delegated and left alone. Fix: check the owner before reading the account's data. |
+| `CPI001-P` | `arbitrary-cpi` | warn | likely | `invoke`/`invoke_signed` whose `program_id` comes from a caller-supplied account whose key is never compared to an expected id (`==`/`!=` or an assert/require macro), letting an attacker redirect the call to malicious code. Runs on the fact table: typed-builder CPIs (`CreateAccount { … }.invoke_signed(…)`) and constant/param program ids are ignored, and a delegated program account is left alone. `warn` because the syn v1 cannot see cross-function key checks; promote with `--deny CPI001-P`. Fix: compare the program account's key to the expected id before invoking. |
 | `ZC001-P` | `layout-padding-mismatch` | warn | likely | A `#[repr(C)]` `ShankAccount`/`ShankType` struct whose padded in-memory layout differs from its packed borsh layout, so on-chain zero-copy reads and client (de)serialization disagree. Advisory because it only affects the generated borsh client; a program driven another way is unaffected. Reuses the layout analysis behind the `pinoc build`/`pinoc idl` padding warning. Fix: add explicit `_padding: [u8; N]` fields, or `--deny ZC001-P` to make it blocking. |
 | `ZC002-P` | `unchecked-length-before-cast` | deny | likely | An account whose data is borrowed through an `*_unchecked` accessor (`borrow_data_unchecked`/`borrow_mut_data_unchecked`) with no `data_len()` guard on that account, so a shorter-than-expected account is read past its end. Runs on the per-account fact table (`facts/`); if the account's `data_len()` is read anywhere in the handler it is treated as guarded, and a delegated account is left alone. Fix: check `data_len() >= size_of::<T>()` before the unchecked borrow. |
 | `ZC003-P` | `missing-repr-c` | deny | definite | A `ShankAccount`/`ShankType` struct read zero-copy without `#[repr(C)]` or `#[repr(transparent)]`. The default layout may reorder fields and break the byte mapping the client relies on. Fix: add `#[repr(C)]`. |
 
-Both anchor their finding at the struct's first attribute, so a suppression comment written directly above the item covers it.
+The struct-layout lints (`ZC001-P`, `ZC003-P`) anchor their finding at the struct's first attribute, so a suppression comment written directly above the item covers it. The flow lints (`ACC001-P`, `ZC002-P`, `CPI001-P`) anchor at the offending statement.
 
 ## Planned checks
 
@@ -36,7 +37,10 @@ Not yet implemented; codes and intended severity are listed so the suppression c
 
 | Code | id | Category | Severity | Flags |
 |---|---|---|---|---|
-| `CPI001-P` | `arbitrary-cpi` | CPI | deny | `invoke`/`invoke_signed` to a caller-supplied program account never checked against an expected id, letting an attacker redirect the call to malicious code. |
+| `ACC002-P` | `missing-signer` | ACC | warn | An account in an authority position (the authority slot of a known token CPI, or its key compared to an `authority` field) that is never `is_signer`-checked. |
+| `ACC004-P` | `missing-discriminator` | ACC | warn | Deserialize of an equal-size type (cross-referencing the ZC001 size table) with no discriminator check, so one account type is read as another. |
+| `ACC005-P` | `duplicate-mutable-account` | ACC | warn | Two mutably-used account bindings with no `key() != key()` guard between them. |
+| `CPI003-P` | `revival-on-close` | CPI | deny | An account closed by draining lamports without zeroing its data or writing a closed-marker, allowing same-transaction revival. |
 
 ## Configuration
 
@@ -85,6 +89,6 @@ The process exits `1` if any surviving finding is `deny`, else `0`. Advisory fin
 | `contract.rs` | `Finding`, the `Lint` trait, and `Severity` / `Confidence` / `Category` / `Backend` / `Span`. The JSON shape is frozen here. |
 | `suppress.rs` | Parses `// pinoc:allow(CODE)` comments and matches them to findings. |
 | `output.rs` | Human and `--json` renderers. |
-| `facts/mod.rs` | Per-account fact table: for each handler, how each account is validated and used. Account/CPI lints run on this. |
+| `facts/mod.rs` | Per-account fact table: for each handler, how each account is validated and used, plus the program-id source of each `invoke`. Account/CPI lints run on this. |
 | `lints/mod.rs` | The lint registry and span helpers. |
-| `lints/acc001_owner.rs`, `lints/zc001_padding.rs`, `lints/zc002_length.rs`, `lints/zc003_repr_c.rs` | The individual checks. |
+| `lints/acc001_owner.rs`, `lints/cpi001_arbitrary_cpi.rs`, `lints/zc001_padding.rs`, `lints/zc002_length.rs`, `lints/zc003_repr_c.rs` | The individual checks. |
