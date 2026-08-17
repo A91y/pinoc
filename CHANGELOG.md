@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-18
+
 ### Added
 - `pinoc check` CLI flags (`--deny`/`--allow`) now override `Pinoc.toml [check]` per code instead of layering onto it: `--deny ZC001-P` wins over a config `allow = ["ZC001-P"]` (previously the config allow silently ignored the CLI deny), and `--allow` beats a config `deny`. A specific CLI flag also overrides a config `*`/`all` wildcard. Within one layer, `allow` still beats `deny`. Resolution order: CLI allow, CLI deny, config allow, config deny, config warn, lint default.
 - `pinoc check`'s `--deny`/`--allow` accept `all` (an unquoted-safe alias for `*`) and multiple space-separated codes (`--deny ZC001-P ZC003-P`). Any value that is not a real lint code or `*`/`all` is rejected with a clear error, so a typo or a bare `--deny *` (which the shell expands into filenames before pinoc sees it) fails loudly instead of silently doing nothing.
