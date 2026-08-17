@@ -75,15 +75,15 @@ allow = ["ACC003-P"]         # suppress entirely
 confidence_threshold = "likely"   # drop findings weaker than this
 ```
 
-CLI flags layer on top of the file, and `--allow`/`allow` win over `--deny`/`deny`:
+**Precedence.** A CLI flag overrides the config file for the code(s) it names: `--deny ZC001-P` wins over a config `allow = ["ZC001-P"]` (and over a config `allow = ["*"]`), and `--allow` beats a config `deny`. Within one layer, `allow` beats `deny`. So the order is: CLI allow, then CLI deny, then config allow, then config deny, then config warn, then the lint's default.
 
 ```bash
 pinoc check --deny ZC003-P   # make an advisory code fail
-pinoc check --allow ZC001-P  # suppress a code for this run
+pinoc check --allow ZC001-P  # suppress a code for this run (beats a config deny)
 pinoc check --deny '*'       # every code fails (quote so the shell keeps the *)
 ```
 
-`*` or `all` targets every code in the deny, warn, and allow lists (`*` also works in the inline comment). Space-separated values work too (`--deny ZC001-P ZC003-P`). Any value that is not a real code or `*`/`all` is rejected, so a typo or a bare `--deny *` (which the shell expands into filenames) fails with a clear error; quote it as `--deny '*'` or use `--deny all`.
+`*` or `all` targets every code in the deny, warn, and allow lists (`*` also works in the inline comment). A wildcard matches within its own layer, so a specific `--deny ZC001-P` still overrides a config `allow = ["*"]`. Space-separated values work too (`--deny ZC001-P ZC003-P`). Any value that is not a real code or `*`/`all` is rejected, so a typo or a bare `--deny *` (which the shell expands into filenames) fails with a clear error; quote it as `--deny '*'` or use `--deny all`.
 
 ## Suppression
 

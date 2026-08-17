@@ -54,12 +54,15 @@ pub struct CheckConfig {
     pub confidence_threshold: Option<String>,
 }
 
-/// Returns `None` (never errors) if `Pinoc.toml` is missing, so callers can
-/// fall back to their own defaults; also prints a `pinoc config init` hint.
+/// Returns `None` (never errors) if `Pinoc.toml` is missing, so callers can fall
+/// back to their own defaults. The `pinoc config init` hint goes to stderr so it
+/// never pollutes machine-readable stdout (e.g. `pinoc check --json`).
 pub fn read_pinoc_config_optional() -> Result<Option<PinocConfig>> {
     let config_path = Path::new("Pinoc.toml");
     if !config_path.exists() {
-        println!("💡 No Pinoc.toml found. Run `pinoc config init` to create one for this project.");
+        eprintln!(
+            "💡 No Pinoc.toml found. Run `pinoc config init` to create one for this project."
+        );
         return Ok(None);
     }
     Ok(Some(parse_pinoc_config(config_path)?))
