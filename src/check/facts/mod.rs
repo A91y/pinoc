@@ -127,6 +127,11 @@ const SYSVAR_TYPES: &[&str] = &[
 ];
 const CPI_FUNCS: &[&str] = &["invoke", "invoke_signed"];
 const INSTRUCTION_TYPES: &[&str] = &["Instruction", "InstructionView"];
+/// Macros that only format or log; a field mention inside them is not a check.
+const LOG_MACROS: &[&str] = &[
+    "msg", "log", "sol_log", "println", "print", "eprintln", "eprint", "format", "write",
+    "writeln", "panic", "dbg", "emit",
+];
 
 fn validation_for_method(name: &str) -> Option<Validation> {
     Some(match name {
@@ -242,7 +247,8 @@ struct Extractor {
     bindings: Vec<AccountBinding>,
     index: HashMap<String, usize>,
     aliases: HashMap<String, String>,
-    macro_texts: Vec<String>,
+    /// `(macro name, token text)` for each macro invocation, for the check scan.
+    macro_texts: Vec<(String, String)>,
     /// `let ix = InstructionView { … }` local name → its program-id source.
     instr_programs: HashMap<String, Option<usize>>,
     cpi_sites: Vec<CpiSite>,
@@ -283,12 +289,16 @@ impl Extractor {
 
     fn apply_macro_validations(&mut self) {
         // Owner/signer/key checks are often written inside macros (`assert_eq!`,
-        // `require!`), whose bodies syn does not visit as expressions. Scan the
-        // macro token text for `<binding> . method` and record the validation.
+        // `require!`), whose bodies syn does not visit as expressions. Scan each
+        // macro's token text for `<binding> . method`, skipping log/format macros
+        // where a field mention is not a check.
         let texts = std::mem::take(&mut self.macro_texts);
         for i in 0..self.bindings.len() {
             let name = self.bindings[i].name.clone();
-            for text in &texts {
+            for (macro_name, text) in &texts {
+                if LOG_MACROS.contains(&macro_name.as_str()) {
+                    continue;
+                }
                 for (method, val) in [
                     ("owner", Validation::Owner),
                     ("key", Validation::Key),
@@ -363,7 +373,13 @@ impl<'ast> Visit<'ast> for Extractor {
     }
 
     fn visit_macro(&mut self, mac: &'ast syn::Macro) {
-        self.macro_texts.push(mac.tokens.to_string());
+        let name = mac
+            .path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string())
+            .unwrap_or_default();
+        self.macro_texts.push((name, mac.tokens.to_string()));
         syn::visit::visit_macro(self, mac);
     }
 }

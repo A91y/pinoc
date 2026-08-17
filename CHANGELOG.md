@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pinoc check` human output now prints a trailing line when `confidence_threshold` hides findings, e.g. `1 lower-confidence finding below the \`likely\` threshold hidden; lower \`confidence_threshold\` (or \`--deny <code>\`) to show them.`, so a lint that is silenced only for being below the threshold is never invisible. The count excludes findings silenced by `allow`/suppression, and the line is documented under "The below the threshold line" in the check README.
 
 ### Fixed
+- `pinoc check` no longer treats an account field mentioned inside a logging or formatting macro (`msg!`, `pinocchio_log::log!`, `format!`, `emit!`, `println!`, …) as a validation. Previously `msg!("{}", vault.owner())` marked the owner as checked, so a handler that logged an account field but never actually validated it silently passed ACC001/ACC002/CPI001/ACC003/ZC002. Only genuine checks (assert/require-style macros, or real `==`/`!=`/method comparisons) now count; the macro scan skips a fixed set of log/format macro names.
 - `pinoc check --json` no longer prints the "No Pinoc.toml found" hint on stdout, which corrupted the JSON stream for machine consumers (CI, a SARIF exporter). The hint now goes to stderr, so `--json` stdout is always pure JSON.
 
 ## [0.2.1] - 2026-07-18
