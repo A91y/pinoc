@@ -2,8 +2,8 @@
 
 `pinoc build` and `pinoc idl` extract a program's interface and write two files to `target/idl/` (override with `--out-dir`):
 
-- **`<name>.json`** — shank's native IDL, extracted directly from the program's `Shank*` derive macros. This is the canonical file, and the one `pinoc client generate --generator shank` consumes.
-- **`<name>.codama.json`** — a Codama-compatible IDL, consumed by `pinoc client generate --generator codama` and by any external Codama pipeline.
+- **`<name>.json`**: shank's native IDL, extracted directly from the program's `Shank*` derive macros. This is the canonical file, and the one `pinoc client generate --generator shank` consumes.
+- **`<name>.codama.json`**: a Codama-compatible IDL, consumed by `pinoc client generate --generator codama` and by any external Codama pipeline.
 
 Extraction is powered by [shank](https://github.com/metaplex-foundation/shank), vendored into `pinoc` (no separate install). A failed extraction prints a warning; it never fails the build.
 

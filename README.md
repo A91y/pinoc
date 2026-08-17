@@ -16,7 +16,7 @@
 
 ---
 
-A Rust CLI for [Pinocchio](https://github.com/anza-xyz/pinocchio) programs. It scaffolds a project, builds and deploys it, keeps program IDs in sync, and generates an IDL and a standalone Rust client from it. Sensible defaults, no required configuration.
+A Rust CLI for [Pinocchio](https://github.com/anza-xyz/pinocchio) programs. It scaffolds a project, builds and deploys it, keeps program IDs in sync, generates an IDL and a standalone Rust client from it, and lints for Solana-specific safety issues. Sensible defaults, no required configuration.
 
 ## Installation
 
@@ -29,10 +29,10 @@ cargo install pinoc
 
 ```bash
 # Latest from GitHub
-cargo install --git https://github.com/a91y/pinoc --force
+cargo install --git https://github.com/A91y/pinoc --force
 
 # From source
-git clone https://github.com/a91y/pinoc.git
+git clone https://github.com/A91y/pinoc.git
 cd pinoc && cargo install --path .
 ```
 
@@ -45,6 +45,7 @@ pinoc init my_app       # scaffold a project
 cd my_app
 pinoc build             # build + regenerate the IDL
 pinoc test              # run tests (mollusk-svm)
+pinoc check             # lint for Solana safety issues
 pinoc deploy            # deploy to the configured cluster
 ```
 
@@ -55,6 +56,7 @@ pinoc deploy            # deploy to the configured cluster
 | `pinoc init <name>` | Create a new project |
 | `pinoc build` | Build the program and regenerate the IDL |
 | `pinoc test` | Run tests |
+| `pinoc check` | Lint for Solana-specific safety issues (account, CPI, zero-copy) |
 | `pinoc deploy` | Deploy to a cluster |
 | `pinoc clean` | Clean build artifacts (keypairs preserved) |
 | `pinoc add <package>` | Add a Pinocchio package |
@@ -67,11 +69,11 @@ pinoc deploy            # deploy to the configured cluster
 
 Common options:
 
-- `pinoc init <name> --with-example` — scaffold a worked PDA-account example instead of a no-op program
-- `pinoc init <name> --no-git` — skip git initialization
-- `pinoc deploy --cluster <cluster> --wallet <path>` — override deployment settings
-- `pinoc build --program-id <ADDRESS>` — set the IDL program address for programs that don't call `declare_id!`
-- `pinoc clean --no-preserve` — clean everything, including keypairs
+- `pinoc init <name> --with-example`: scaffold a worked PDA-account example instead of a no-op program
+- `pinoc init <name> --no-git`: skip git initialization
+- `pinoc deploy --cluster <cluster> --wallet <path>`: override deployment settings
+- `pinoc build --program-id <ADDRESS>`: set the IDL program address for programs that don't call `declare_id!`
+- `pinoc clean --no-preserve`: clean everything, including keypairs
 
 ## Project structure
 
@@ -129,8 +131,19 @@ pinoc keys sync         # rewrite the program ID in source to match the keypair
 
 `pinoc build` regenerates the IDL at `target/idl/` on every build, and `pinoc client generate` renders a standalone Rust client crate from it. Both understand shank programs and programs using native [Codama](https://github.com/codama-idl/codama) derive macros.
 
-- IDL generation — files produced, generator selection, error handling, the zero-copy padding lint: [src/idl/README.md](src/idl/README.md)
-- Client generation — the shank and Codama generators, CPI variants, `fetch_*` helpers, output paths: [src/client_gen/README.md](src/client_gen/README.md)
+- IDL generation (files produced, generator selection, error handling, the zero-copy padding lint): [src/idl/README.md](src/idl/README.md)
+- Client generation (the shank and Codama generators, CPI variants, `fetch_*` helpers, output paths): [src/client_gen/README.md](src/client_gen/README.md)
+
+## Linting
+
+`pinoc check` statically lints a program for Solana-specific safety issues that rustc, clippy, and rust-analyzer do not model: account ownership and signer checks, cross-program invocation safety, and zero-copy memory layout. Configurable severity, inline `// pinoc:allow(CODE)` suppression, and `--json` output for CI.
+
+```bash
+pinoc check                  # report findings, exit nonzero on a deny
+pinoc check --deny '*'       # promote every check to a hard failure
+```
+
+- Lint codes, configuration, and suppression: [src/check/README.md](src/check/README.md)
 
 ## Prerequisites
 
@@ -143,18 +156,18 @@ pinoc keys sync         # rewrite the program ID in source to match the keypair
 Fork, branch, make your change with tests, and open a pull request.
 
 ```bash
-git clone https://github.com/a91y/pinoc.git
+git clone https://github.com/A91y/pinoc.git
 cd pinoc && cargo build --release && cargo install --path .
 ```
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE).
 
 ## Support
 
-- Issues: [GitHub Issues](https://github.com/a91y/pinoc/issues)
-- Discussions: [GitHub Discussions](https://github.com/a91y/pinoc/discussions)
+- Issues: [GitHub Issues](https://github.com/A91y/pinoc/issues)
+- Discussions: [GitHub Discussions](https://github.com/A91y/pinoc/discussions)
 - Pinocchio: [anza-xyz/pinocchio](https://github.com/anza-xyz/pinocchio)
 
 ## Acknowledgements
