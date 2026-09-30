@@ -2,14 +2,24 @@ use crate::idl::{generate_idl, Generator};
 use anyhow::{Context, Result};
 use std::process::Command;
 
-pub fn run_build(
-    quiet: bool,
-    program_id: Option<&str>,
-    idl_generator: Option<Generator>,
-) -> Result<()> {
+/// Flattens repeated and comma/space-separated `--features` values into the single
+/// comma-separated list cargo accepts.
+pub fn features_arg(features: &[String]) -> Option<String> {
+    let list: Vec<&str> = features
+        .iter()
+        .flat_map(|f| f.split(|c: char| c == ',' || c.is_whitespace()))
+        .filter(|f| !f.is_empty())
+        .collect();
+    (!list.is_empty()).then(|| list.join(","))
+}
+
+pub fn build_sbf(quiet: bool, features: &[String]) -> Result<()> {
     println!("Building program");
     let mut cmd = Command::new("cargo");
     cmd.arg("build-sbf");
+    if let Some(features) = features_arg(features) {
+        cmd.arg("--features").arg(features);
+    }
     if quiet {
         cmd.arg("--").arg("--quiet");
     }
@@ -17,9 +27,18 @@ pub fn run_build(
     let status = cmd.spawn()?.wait().context("Failed to build project")?;
     if !status.success() {
         anyhow::bail!("Build failed with exit code: {:?}", status.code());
-    } else {
-        println!("Build completed successfully!");
     }
+    println!("Build completed successfully!");
+    Ok(())
+}
+
+pub fn run_build(
+    quiet: bool,
+    features: &[String],
+    program_id: Option<&str>,
+    idl_generator: Option<Generator>,
+) -> Result<()> {
+    build_sbf(quiet, features)?;
 
     if let Err(e) = generate_idl("target/idl", program_id, idl_generator) {
         let full_message = e

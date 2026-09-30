@@ -55,7 +55,7 @@ pinoc deploy            # deploy to the configured cluster
 | --- | --- |
 | `pinoc init <name>` | Create a new project |
 | `pinoc build` | Build the program and regenerate the IDL |
-| `pinoc test` | Run tests |
+| `pinoc test` | Build the program, then run tests |
 | `pinoc check` | Lint for Solana-specific safety issues (account, CPI, zero-copy) |
 | `pinoc deploy` | Deploy to a cluster |
 | `pinoc clean` | Clean build artifacts (keypairs preserved) |
@@ -73,7 +73,13 @@ Common options:
 - `pinoc init <name> --no-git`: skip git initialization
 - `pinoc deploy --cluster <cluster> --wallet <path>`: override deployment settings
 - `pinoc build --program-id <ADDRESS>`: set the IDL program address for programs that don't call `declare_id!`
+- `pinoc build --features <FEATURES>` / `pinoc test --features <FEATURES>`: activate cargo features, passed to `cargo build-sbf` and `cargo test` (repeatable or comma-separated, like cargo's own flag)
+- `pinoc test --no-build`: skip the SBF build and test against the existing `target/deploy/*.so`
 - `pinoc clean --no-preserve`: clean everything, including keypairs
+
+## Testing
+
+`pinoc test` runs `cargo build-sbf` before `cargo test`, because SVM tests (mollusk-svm, litesvm, solana-program-test) load `target/deploy/*.so`, which `cargo test` does not build. Without the build step, tests silently run against the last-built binary. `--features` applies to both steps, so the tested artifact and the test code always agree on the feature set. Pass `--no-build` to skip the build when iterating on tests that don't load the `.so`.
 
 ## Project structure
 

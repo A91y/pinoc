@@ -1,11 +1,20 @@
+use super::build::{build_sbf, features_arg};
 use anyhow::{Context, Result};
 use std::io::Write;
 use std::process::Command;
 
-pub fn run_test(quiet: bool) -> Result<()> {
+pub fn run_test(quiet: bool, features: &[String], no_build: bool) -> Result<()> {
+    // SVM tests load target/deploy/*.so, which `cargo test` does not rebuild.
+    if !no_build {
+        build_sbf(quiet, features)?;
+    }
+
     println!("Testing program");
     let mut cmd = Command::new("cargo");
     cmd.arg("test");
+    if let Some(features) = features_arg(features) {
+        cmd.arg("--features").arg(features);
+    }
     if quiet {
         cmd.arg("--").arg("--quiet");
     }

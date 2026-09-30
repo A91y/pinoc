@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-30
+
+### Added
+- `pinoc build --features <FEATURES>` and `pinoc test --features <FEATURES>` (`-F`): activate cargo features, passed through to `cargo build-sbf` and `cargo test`. Accepted the way cargo accepts them: repeatable, comma-separated, or space-separated (`-F a,b -F c`).
+- `pinoc test --no-build`: skip the SBF build step and test against the existing `target/deploy/*.so`.
+
+### Changed
+- `pinoc test` now runs `cargo build-sbf` before `cargo test`, with the same `--features`. SVM tests load `target/deploy/*.so`, which `cargo test` does not build, so previously tests could silently run against a stale binary that predated the latest source edits. A build failure stops the command before any test runs. The pre-test build does not regenerate the IDL.
+
 ## [0.2.2] - 2026-08-18
 
 ### Added
