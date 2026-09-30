@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-09-30
+
+### Added
+- `pinoc deploy` refuses to upload an artifact with no entrypoint, before calling `solana program deploy`. It checks the `.so` it is about to ship regardless of how it was built (a hand-run `cargo build-sbf --features test-default`, a stale artifact from an earlier session), so an entrypoint-less program never costs deploy rent. The error lists this package's features that enable `no-entrypoint`, or says the program may not declare an entrypoint.
+
+### Fixed
+- `pinoc build --features test-default` (or any feature enabling `no-entrypoint`) produced an entrypoint-less artifact that `pinoc deploy` would ship. `pinoc build` now runs the same entrypoint check as `pinoc test` after `cargo build-sbf`, fails naming the feature that caused it, and deletes the bad artifact. It does not drop the feature on its own, since `pinoc build`'s features describe the artifact asked for.
+
+### Changed
+- The entrypoint check now tests what the SBF loader tests, the ELF entry address (`e_entry`) falling inside an executable section, instead of looking for a symbol named `entrypoint`. A valid program whose entry function has another name (hand-written sBPF assembly, a custom linker setup) is no longer rejected.
+- `pinoc test` also deletes an artifact that fails the entrypoint check, so a later `pinoc test --no-build` or `pinoc deploy` cannot pick it up. The check is one implementation shared by `build`, `test`, and `deploy`.
+
 ## [0.2.4] - 2026-09-30
 
 ### Added

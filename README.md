@@ -90,7 +90,11 @@ pinoc test --features test-default,devnet --build-features devnet
 pinoc test --features test-default --build-features ""   # build with no features at all
 ```
 
-`--build-features` is used as given. After building, `pinoc test` refuses to run if the artifact has no `entrypoint` symbol, since no test could load it. Pass `--no-build` to skip the build when iterating on tests that don't load the `.so`.
+`--build-features` is used as given. Pass `--no-build` to skip the build when iterating on tests that don't load the `.so`.
+
+### Entrypoint check
+
+`pinoc build`, `pinoc test`, and `pinoc deploy` refuse an SBF artifact with no entrypoint (an ELF entry address outside its executable code, the same rule the SBF loader enforces), which is what `no-entrypoint` produces: it builds fine but contains no program, so no test can load it and a deploy would pay rent for an unusable program. The error names the cause (a build feature, the `default` feature, or a program with no entrypoint). `pinoc build` and `pinoc test` delete the bad artifact; `pinoc deploy` checks whatever it is about to upload, however it was built. Unlike `pinoc test`, `pinoc build` never drops a feature on its own: its features describe the artifact you asked for.
 
 ## Project structure
 

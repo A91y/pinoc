@@ -1,3 +1,4 @@
+use super::artifact::{check_entrypoint, read_manifest, Rebuild};
 use crate::config;
 use anyhow::{Context, Result};
 use std::fs;
@@ -33,6 +34,7 @@ pub fn run_deploy(cluster: Option<&str>, wallet: Option<&str>) -> Result<()> {
     let so_path = so_file.ok_or_else(|| {
         anyhow::anyhow!("No .so file found in target/deploy. Please run 'pinoc build' first.")
     })?;
+    check_entrypoint(&so_path, read_manifest().as_ref(), Rebuild::Deploy)?;
 
     // Use the program's own keypair as --program-id so the deploy matches
     // `declare_id!` and upgrades in place instead of a new random address.

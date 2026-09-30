@@ -1,3 +1,4 @@
+use super::artifact::{check_built_artifact, read_manifest, Rebuild};
 use crate::idl::{generate_idl, Generator};
 use anyhow::{Context, Result};
 use std::process::Command;
@@ -44,6 +45,12 @@ pub fn run_build(
     idl_generator: Option<Generator>,
 ) -> Result<()> {
     build_sbf(quiet, features)?;
+    check_built_artifact(
+        read_manifest().as_ref(),
+        Rebuild::Build {
+            build_features: &split_features(features),
+        },
+    )?;
 
     if let Err(e) = generate_idl("target/idl", program_id, idl_generator) {
         let full_message = e

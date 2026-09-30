@@ -1,3 +1,4 @@
+mod artifact;
 mod banner;
 pub mod build;
 pub mod check;
