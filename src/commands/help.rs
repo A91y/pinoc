@@ -11,7 +11,7 @@ pub fn display_help_banner() -> Result<()> {
     println!(
         "   pinoc build [--features]  - Build the project (also regenerates target/idl/*.json)"
     );
-    println!("   pinoc test [--features] [--no-build] - Build the program, then run project tests");
+    println!("   pinoc test [--features] [--build-features] [--no-build] - Build the program, then run project tests");
     println!("   pinoc deploy [--cluster] [--wallet] - Deploy the project (uses Pinoc.toml config, optional overrides)");
     println!(
         "   pinoc clean [--no-preserve] - Clean target directory (preserves keypairs by default)"

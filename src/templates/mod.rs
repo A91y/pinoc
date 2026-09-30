@@ -162,6 +162,8 @@ mollusk-svm-bencher = "0.14.0"
 [features]
 no-entrypoint = []
 std = []
+# For `cargo test` only: `no-entrypoint` strips the program out of the SBF build, so never
+# build the deployed artifact with it. `pinoc test` leaves it out of its pre-test build.
 test-default = ["no-entrypoint", "std"]
     "#,
         project_name

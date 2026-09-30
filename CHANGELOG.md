@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-09-30
+
+### Added
+- `pinoc test --build-features <FEATURES>`: sets the features for the pre-test SBF build separately from the test features (`--build-features ""` for none), for projects whose deployable artifact and tests need different feature sets. Used exactly as given. When omitted, the build uses `--features`.
+- `pinoc test` refuses to run tests when the built `target/deploy/<name>.so` has no `entrypoint` symbol, naming the cause: a build feature that enables `no-entrypoint`, a `default` feature that does, or a program that declares no entrypoint. Such an artifact looks like a fresh successful build but cannot be loaded by any test.
+
+### Fixed
+- `pinoc test --features test-default` built the SBF artifact with `no-entrypoint` (via the scaffold's `test-default = ["no-entrypoint", "std"]`), producing an artifact with no program in it that SVM tests could not load. When the build features are inherited from `--features`, any feature that enables `no-entrypoint`, directly or transitively, is now left out of the build (with a message saying so); tests still run with it.
+- The minimal `pinoc init` scaffold declared no entrypoint, so its artifact contained no program and could not be loaded or deployed. It now calls `pinocchio::entrypoint!(process_instruction)`.
+
+### Changed
+- The `--with-example` scaffold's `Cargo.toml` notes above `test-default` that it disables the entrypoint and must not be used for the deployed artifact.
+
 ## [0.2.3] - 2026-09-30
 
 ### Added

@@ -74,12 +74,23 @@ Common options:
 - `pinoc deploy --cluster <cluster> --wallet <path>`: override deployment settings
 - `pinoc build --program-id <ADDRESS>`: set the IDL program address for programs that don't call `declare_id!`
 - `pinoc build --features <FEATURES>` / `pinoc test --features <FEATURES>`: activate cargo features, passed to `cargo build-sbf` and `cargo test` (repeatable or comma-separated, like cargo's own flag)
+- `pinoc test --build-features <FEATURES>`: features for the pre-test SBF build when they differ from the test features (`""` for none)
 - `pinoc test --no-build`: skip the SBF build and test against the existing `target/deploy/*.so`
 - `pinoc clean --no-preserve`: clean everything, including keypairs
 
 ## Testing
 
-`pinoc test` runs `cargo build-sbf` before `cargo test`, because SVM tests (mollusk-svm, litesvm, solana-program-test) load `target/deploy/*.so`, which `cargo test` does not build. Without the build step, tests silently run against the last-built binary. `--features` applies to both steps, so the tested artifact and the test code always agree on the feature set. Pass `--no-build` to skip the build when iterating on tests that don't load the `.so`.
+`pinoc test` runs `cargo build-sbf` before `cargo test`, because SVM tests (mollusk-svm, litesvm, solana-program-test) load `target/deploy/*.so`, which `cargo test` does not build. Without the build step, tests silently run against the last-built binary.
+
+`--features` applies to both steps, except for any feature that enables `no-entrypoint` (such as the scaffold's `test-default`), which is left out of the build: `no-entrypoint` compiles the program out of the SBF artifact. When the build and the tests need different features, set the build's separately:
+
+```bash
+pinoc test --features test-default               # build: no features, tests: test-default
+pinoc test --features test-default,devnet --build-features devnet
+pinoc test --features test-default --build-features ""   # build with no features at all
+```
+
+`--build-features` is used as given. After building, `pinoc test` refuses to run if the artifact has no `entrypoint` symbol, since no test could load it. Pass `--no-build` to skip the build when iterating on tests that don't load the `.so`.
 
 ## Project structure
 

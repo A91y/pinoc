@@ -29,6 +29,8 @@ pub fn process_instruction(
     // Your program logic here
     Ok(())
 }
+
+pinocchio::entrypoint!(process_instruction);
 "#;
 
     template.replace("{program_address}", program_address)

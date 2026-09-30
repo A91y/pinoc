@@ -70,6 +70,12 @@ enum Commands {
             help = "Skip the cargo build-sbf step and test against the existing target/deploy/*.so"
         )]
         no_build: bool,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Features for the pre-test SBF build, if different from --features (\"\" for none)"
+        )]
+        build_features: Option<Vec<String>>,
     },
     Deploy {
         #[arg(long, help = "Cluster override")]
@@ -161,8 +167,9 @@ fn main() -> Result<()> {
             quiet,
             features,
             no_build,
+            build_features,
         } => {
-            commands::test::run_test(*quiet, features, *no_build)?;
+            commands::test::run_test(*quiet, features, build_features.as_deref(), *no_build)?;
         }
         Commands::Deploy { cluster, wallet } => {
             commands::deploy::run_deploy(cluster.as_deref(), wallet.as_deref())?;

@@ -2,14 +2,19 @@ use crate::idl::{generate_idl, Generator};
 use anyhow::{Context, Result};
 use std::process::Command;
 
-/// Flattens repeated and comma/space-separated `--features` values into the single
-/// comma-separated list cargo accepts.
-pub fn features_arg(features: &[String]) -> Option<String> {
-    let list: Vec<&str> = features
+/// Splits repeated and comma/space-separated `--features` values into individual features,
+/// the way cargo reads them.
+pub fn split_features(features: &[String]) -> Vec<String> {
+    features
         .iter()
         .flat_map(|f| f.split(|c: char| c == ',' || c.is_whitespace()))
         .filter(|f| !f.is_empty())
-        .collect();
+        .map(str::to_string)
+        .collect()
+}
+
+pub fn features_arg(features: &[String]) -> Option<String> {
+    let list = split_features(features);
     (!list.is_empty()).then(|| list.join(","))
 }
 
