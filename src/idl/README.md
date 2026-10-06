@@ -106,7 +106,7 @@ pub const MAX_RESERVE_FLOOR: u64 = 100_000_000 * MILLION;
 
 - The **value** is evaluated from the const's own expression: integer literals, `+ - * / <<`, casts, and references to other consts in the crate. Nothing is repeated, so it cannot drift from the program.
 - The **type** is the declared one when it is a fixed-width integer (`u8` to `u128`, `i8` to `i128`). A `usize` has no wire type, so name one in the marker: `// pinoc:constant(u8)`. The value is checked against it.
-- Doc comments become the constant's docs. The marker may sit above or below them, with no blank line before the `const`.
+- The marker goes directly above the `const`. When the const has doc comments or attributes, which become the constant's docs, the marker goes directly above those, or anywhere between them and the `const`: there it is inside the item, so blank lines around it are harmless. A marker that is not directly above the `const`, or above the doc comments that belong to it, is an error naming the marker's file and line.
 
 Each one is written to `constants` in `<name>.json` (`{name, type, value}`) and to `program.constants` in `<name>.codama.json` (a `constantNode`, with the name in camelCase). A marker that cannot be honoured is an error, not a skipped constant: a type that is not an integer, a value that does not fit or that pinoc cannot evaluate, a value beyond 2^53 (an IDL number is a JSON number, which a JavaScript client reads as a double), or a marker that is not directly above a `const`. Only integers are supported.
 

@@ -92,6 +92,10 @@ fn a_marker_pinoc_cannot_honour_is_an_error() {
             "is not directly above a `const` item",
         ),
         (
+            "// pinoc:constant\n\n/// Docs.\npub const GAP: u8 = 1;",
+            "is not directly above a `const` item",
+        ),
+        (
             "// pinoc:constant\npub fn not_a_const() {}",
             "is not directly above a `const` item",
         ),
@@ -108,5 +112,30 @@ fn a_marker_pinoc_cannot_honour_is_an_error() {
             stderr(&out)
         );
         assert!(!dir.join("target/idl").exists(), "{source}");
+    }
+}
+
+#[test]
+fn a_marker_may_sit_above_or_below_the_doc_comments() {
+    for source in [
+        "// pinoc:constant\n/// Docs.\n#[allow(dead_code)]\npub const LIMIT: u8 = 3;",
+        "/// Docs.\n// pinoc:constant\n#[allow(dead_code)]\npub const LIMIT: u8 = 3;",
+        // Below the doc comments the marker is inside the item, so blank lines
+        // around it are harmless.
+        "/// Docs.\n\n// pinoc:constant\npub const LIMIT: u8 = 3;",
+        "/// Docs.\n// pinoc:constant\n\npub const LIMIT: u8 = 3;",
+    ] {
+        let dir = temp_copy("client_program");
+        let lib = dir.join("src/lib.rs");
+        let original = std::fs::read_to_string(&lib).unwrap();
+        std::fs::write(&lib, format!("{original}\n{source}\n")).unwrap();
+        let out = pinoc(&dir, &["idl"]);
+        assert!(out.status.success(), "{source}: {}", stderr(&out));
+        let shank = read_json(&dir.join("target/idl/client_program.json"));
+        assert_eq!(
+            shank["constants"],
+            json!([{ "name": "LIMIT", "type": "u8", "value": "3" }]),
+            "{source}"
+        );
     }
 }

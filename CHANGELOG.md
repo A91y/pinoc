@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `src/idl/README.md` states where a `// pinoc:constant` marker may go as the code has it: directly above the `const`, directly above its doc comments or attributes, or anywhere between those and the `const`, where blank lines are harmless. It previously said no blank line was allowed before the `const`. Tests pin each placement.
+- `src/client_gen/README.md` names the build error a codama Rust client hits without the `curve25519` feature (`E0599 … create_program_address`), which pinoc 0.3.2 and earlier produced for a program with PDAs.
+
 ## [0.3.3] - 2026-10-07
 
 ### Added
