@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-06
+
 ### Added
 - `pinoc client generate --language ts`: renders a TypeScript client through the codama generator (`@codama/renderers-js`) into `clients/ts` (`src/generated/`, a `src/index.ts` re-export, and a `package.json` with the `@solana/kit` dependencies). `--language rust` is the default and its output is unchanged. `--language ts` selects the codama generator without a prompt; with `--generator shank` it is refused, since the built-in generator only renders Rust. The `[client]` paths in `Pinoc.toml` keep configuring the Rust clients only.
 - `pinoc check` analyses methods: a handler is now any free function, `impl` method (inherent or trait impl), or trait default method taking an accounts slice, including a tuple parameter such as `(data, accounts): (&[u8], &[AccountView])`. Previously only free functions were discovered, so a program with its account validation in `impl` blocks got no account or CPI findings.
