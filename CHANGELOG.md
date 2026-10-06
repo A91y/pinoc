@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-06
+
 ### Added
 - `pinoc idl` reports when the program's `codama-macros` is a different minor release than the codama 0.9.3 extractor built into pinoc (read from the program's `Cargo.lock`, else its manifest). If the extraction then fails, the error carries the same note, since a directive newer than 0.9.3 stops it with `unrecognized codama directive`.
 - A `#[codama(..)]` attribute the extractor rejects is reported with the directive's name, its file, line and column, and the source line. The message used to be a bare `unrecognized codama directive`, printed twice in the error chain.
