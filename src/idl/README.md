@@ -12,7 +12,7 @@ Extraction is powered by [shank](https://github.com/metaplex-foundation/shank), 
 `<name>.codama.json` is produced one of two ways, chosen automatically:
 
 - **Shim** (default for shank programs). Rewrites shank's native output so it round-trips through Codama's JS tooling: shank emits pubkey fields as `{"defined": "Address"}`, which `@codama/nodes-from-anchor` mishandles, so the shim rewrites them to the standard `"publicKey"` IDL type. The plain `<name>.json` is left untouched.
-- **Native** (for Codama programs). When the program depends on `codama` and uses at least one of its Rust derive macros (`CodamaAccount`, `CodamaInstructions`, `CodamaErrors`, `CodamaType`, …), `pinoc` invokes Codama's own extractor and emits its IDL directly.
+- **Native** (for Codama programs). When the program depends on `codama` and uses at least one of its Rust derive macros (`CodamaAccount`, `CodamaInstructions`, `CodamaErrors`, `CodamaType`, …), written bare or qualified as `codama::CodamaAccount`, `pinoc` invokes Codama's own extractor and emits its IDL directly.
 
 You can tell the outputs apart: native carries a top-level `"kind": "rootNode"`; the shim carries `"metadata": {"origin": "shank", …}` instead.
 
@@ -49,6 +49,10 @@ Instructions, accounts, and types still require shank's derive macros to appear 
 ## Errors
 
 shank only recognizes error enums deriving `thiserror::Error`. When none are found, `pinoc` falls back to scanning `src/` for a plain enum with a manual `impl From<X> for ProgramError`, synthesizing a message per variant from its name (`InvalidPda` → "Invalid Pda").
+
+Codes are the values the program returns, not the raw discriminants: `pinoc` evaluates what the `From` impl passes to `ProgramError::Custom`. It follows a constant offset (`e as u32 + 6000`, a named or associated `const`, simple constant arithmetic), one or more hops through a method on the enum (`e.code()`), and a `match` that gives every variant a literal code. The same conversion is applied to thiserror-derived errors and to natively extracted `CodamaErrors`, since shank and Codama both read codes from discriminants; For Codama this is decided per error: a code still equal to the raw discriminant is converted, any other code (set explicitly in the program) is kept, and an error whose name matches no variant of the `From` enum is left alone. Every error left unconverted is named in a warning. Names are paired on their lowercased alphanumerics, so `NotAMint` matches Codama's `notAmint`. When the `From` body is none of these, `pinoc` keeps the discriminants and prints a warning, since the IDL codes may then not match the program's.
+
+Native Codama extraction only sees enums deriving `CodamaErrors`. When it finds none, `pinoc` fills `program.errors` in `<name>.codama.json` from the error list of `<name>.json` (thiserror-derived or the manual fallback above), so choosing the native path never drops errors the shank path reports. Errors Codama extracted itself are never replaced. Codama emits an empty message for an error without an `#[error("..")]` attribute; those are filled from the same list.
 
 ## Zero-copy padding lint
 

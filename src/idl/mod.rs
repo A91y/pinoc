@@ -11,6 +11,7 @@ pub mod padding_lint;
 
 use crate::config;
 use anyhow::{Context, Result};
+use manual_errors::{Conversion, ManualErrorCode, ManualErrors};
 use std::fs;
 use std::path::Path;
 
@@ -54,22 +55,41 @@ pub fn generate_idl(
     // shank_idl only recognizes error enums that derive `thiserror::Error`. If
     // it found none, fall back to detecting a plain enum with a manual
     // `impl From<X> for ProgramError` instead of silently emitting no errors.
-    let errors = if idl.errors.as_deref().unwrap_or_default().is_empty() {
-        let src_dir = lib_path.parent().unwrap_or(&crate_root);
-        manual_errors::find_manual_program_errors(src_dir)?
-    } else {
-        None
-    };
-    if let Some(errors) = &errors {
-        if !errors.is_empty() {
-            println!("ℹ️  No thiserror-derived errors found; detected {} error code(s) via a manual `impl From<_> for ProgramError`", errors.len());
+    let src_dir = lib_path.parent().unwrap_or(&crate_root);
+    let shank_errors = idl.errors.as_deref().unwrap_or_default();
+    let manual = manual_errors::find_manual_program_errors(src_dir)?;
+    let errors = match &manual {
+        Some(manual) if shank_errors.is_empty() => {
+            if !manual.errors.is_empty() {
+                println!("ℹ️  No thiserror-derived errors found; detected {} error code(s) via a manual `impl From<_> for ProgramError`", manual.errors.len());
+                report_conversion(manual);
+            }
+            Some(manual.errors.clone())
         }
-    }
+        // shank reads raw discriminants as well, so apply the same conversion
+        // when its errors come from the enum behind the `From` impl.
+        Some(manual) => {
+            let shank_errors: Vec<ManualErrorCode> =
+                serde_json::from_value(serde_json::to_value(shank_errors)?)?;
+            match manual_errors::with_converted_codes(shank_errors, manual) {
+                Ok(corrected) => {
+                    report_conversion(manual);
+                    corrected
+                }
+                Err(variant) => {
+                    if manual.conversion != Conversion::Offset(0) {
+                        println!("⚠️  Error codes left as raw discriminants: `impl From<_> for ProgramError` converts a different enum than the thiserror-derived one (no variant `{variant}`), so its conversion was not applied. If the program offsets its codes, the IDL codes will not match what it returns.");
+                    }
+                    None
+                }
+            }
+        }
+        None => None,
+    };
 
     let idl_json = render_idl_json(&idl, errors.as_deref())
         .with_context(|| "Failed to serialize IDL to JSON")?;
 
-    let src_dir = lib_path.parent().unwrap_or(&crate_root);
     let (resolved_generator, forced) = resolve_generator(generator_override, &crate_root, src_dir)?;
     let codama_idl_json = match resolved_generator {
         Generator::Shank => {
@@ -90,8 +110,15 @@ pub fn generate_idl(
                 "Codama macros detected"
             };
             println!("🔷 .codama.json: native Codama extraction ({reason})");
-            codama_native::extract_native_codama_idl(&crate_root, idl.metadata.address.as_deref())
-                .with_context(|| "Failed to extract native Codama IDL")?
+            let rendered: serde_json::Value = serde_json::from_str(&idl_json)?;
+            let fallback_errors = rendered["errors"].as_array().cloned().unwrap_or_default();
+            codama_native::extract_native_codama_idl(
+                &crate_root,
+                idl.metadata.address.as_deref(),
+                &fallback_errors,
+                manual.as_ref(),
+            )
+            .with_context(|| "Failed to extract native Codama IDL")?
         }
     };
 
@@ -123,6 +150,23 @@ pub fn generate_idl(
     }
 
     Ok(())
+}
+
+/// Says how the error codes were derived whenever that is not the plain discriminant.
+fn report_conversion(manual: &ManualErrors) {
+    match manual.conversion {
+        Conversion::Offset(0) => {}
+        Conversion::Offset(offset) => println!(
+            "ℹ️  Error codes include the {offset:+} offset applied by `impl From<_> for ProgramError`"
+        ),
+        Conversion::PerVariant => println!(
+            "ℹ️  Error codes taken from the `match` in `impl From<_> for ProgramError`"
+        ),
+        Conversion::Unknown => println!(
+            "⚠️  {} error code(s) emitted as raw enum discriminants: the `From` impl was not recognised as a discriminant conversion. If it applies an offset, the IDL codes will not match what the program returns.",
+            manual.errors.len()
+        ),
+    }
 }
 
 /// Resolves the `.codama.json` generator: CLI override > `Pinoc.toml` > macro
@@ -160,7 +204,7 @@ fn resolve_generator(
 /// `errors` field when shank_idl found none on its own.
 fn render_idl_json(
     idl: &shank_idl::idl::Idl,
-    errors: Option<&[manual_errors::ManualErrorCode]>,
+    errors: Option<&[ManualErrorCode]>,
 ) -> Result<String> {
     let mut value = serde_json::to_value(idl)?;
     if let Some(errors) = errors {

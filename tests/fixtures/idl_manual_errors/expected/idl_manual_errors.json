@@ -1,0 +1,26 @@
+{
+  "errors": [
+    {
+      "code": 0,
+      "msg": "Invalid Authority",
+      "name": "InvalidAuthority"
+    },
+    {
+      "code": 6,
+      "msg": "Counter Overflow",
+      "name": "CounterOverflow"
+    },
+    {
+      "code": 7,
+      "msg": "Not Initialized",
+      "name": "NotInitialized"
+    }
+  ],
+  "instructions": [],
+  "metadata": {
+    "address": "EfPyA5fx11YAY9XwmrWVddcQe5bBZeNsKA8avqYUH6Qr",
+    "origin": "shank"
+  },
+  "name": "idl_manual_errors",
+  "version": "0.1.0"
+}

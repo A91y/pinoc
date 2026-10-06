@@ -1,0 +1,13 @@
+[package]
+name = "idl_codama_errors"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+codama = "0.9"
+pinocchio = "0.11.2"
+shank = "0.4.8"
+thiserror = "2.0"
