@@ -1,4 +1,4 @@
-use crate::client_gen;
+use crate::client_gen::{self, Language};
 use crate::config;
 use crate::idl::{codama_native, Generator};
 use anyhow::{Context, Result};
@@ -10,7 +10,7 @@ pub enum ClientCommands {
     Generate {
         #[arg(
             long,
-            help = "Output directory for the generated Rust client [default: clients/rust-shank or clients/rust-codama, depending on the resolved generator, so both can coexist]"
+            help = "Output directory for the generated client [default: clients/rust-shank or clients/rust-codama, depending on the resolved generator, or clients/ts for --language ts, so all can coexist]"
         )]
         out_dir: Option<String>,
         #[arg(long, help = "Path to the IDL JSON", default_value = "target/idl")]
@@ -21,6 +21,13 @@ pub enum ClientCommands {
             help = "Which generator to use: shank (built-in, no setup) or codama (Node.js, richer output). Prompts interactively if omitted."
         )]
         generator: Option<Generator>,
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = Language::Rust,
+            help = "Client language. ts (TypeScript) is rendered by the codama generator only"
+        )]
+        language: Language,
         #[arg(
             long,
             help = "Automatically run 'npm install' for the codama generator if its dependencies aren't present yet"
@@ -47,15 +54,28 @@ pub enum ClientCommands {
     },
 }
 
-pub fn generate_client(
-    idl_dir: &str,
-    out_dir: Option<&str>,
-    generator: Option<Generator>,
-    auto_install: bool,
-    yes: bool,
-    with_cpi: bool,
-    no_cpi: bool,
-) -> Result<()> {
+pub struct GenerateArgs<'a> {
+    pub idl_dir: &'a str,
+    pub out_dir: Option<&'a str>,
+    pub generator: Option<Generator>,
+    pub language: Language,
+    pub auto_install: bool,
+    pub yes: bool,
+    pub with_cpi: bool,
+    pub no_cpi: bool,
+}
+
+pub fn generate_client(args: GenerateArgs) -> Result<()> {
+    let GenerateArgs {
+        idl_dir,
+        out_dir,
+        generator,
+        language,
+        auto_install,
+        yes,
+        with_cpi,
+        no_cpi,
+    } = args;
     let crate_root = std::env::current_dir().with_context(|| "Failed to read current directory")?;
     let cargo_toml = crate_root.join("Cargo.toml");
     if !cargo_toml.exists() {
@@ -72,7 +92,15 @@ pub fn generate_client(
 
     let detected_codama = codama_native::codama_macros_detected(&crate_root, &src_dir)?;
 
+    if language == Language::Ts && generator == Some(Generator::Shank) {
+        anyhow::bail!(
+            "--language ts needs --generator codama: the built-in shank generator only renders Rust."
+        );
+    }
+
     let generator = match generator {
+        // TypeScript has a single renderer, so there is no choice to confirm or prompt for.
+        _ if language == Language::Ts => Generator::Codama,
         Some(g) => {
             let contradicts = matches!(
                 (g, detected_codama),
@@ -86,7 +114,7 @@ pub fn generate_client(
         None => prompt_for_generator(detected_codama),
     };
 
-    let out_dir = resolve_out_dir(out_dir, generator)?;
+    let out_dir = resolve_out_dir(out_dir, generator, language)?;
     let out_dir = out_dir.as_str();
 
     match generator {
@@ -121,7 +149,8 @@ pub fn generate_client(
             println!("✅ Rust client written to {out_dir}/");
         }
         Generator::Codama => {
-            println!("🧬 Generating Rust client (codama, Node.js)...");
+            let label = language.label();
+            println!("🧬 Generating {label} client (codama, Node.js)...");
             let idl_path = Path::new(idl_dir).join(format!("{lib_name}.codama.json"));
             if !idl_path.exists() {
                 anyhow::bail!(
@@ -129,9 +158,14 @@ pub fn generate_client(
                     idl_path.display()
                 );
             }
-            client_gen::codama::generate_via_codama(&idl_path, Path::new(out_dir), auto_install)
-                .with_context(|| "Failed to generate Rust client via codama")?;
-            println!("✅ Rust client written to {out_dir}/ (via codama)");
+            client_gen::codama::generate_via_codama(
+                &idl_path,
+                Path::new(out_dir),
+                auto_install,
+                language,
+            )
+            .with_context(|| format!("Failed to generate {label} client via codama"))?;
+            println!("✅ {label} client written to {out_dir}/ (via codama)");
         }
     }
 
@@ -142,9 +176,18 @@ pub fn generate_client(
 /// per-generator `shank_out_dir`/`codama_out_dir` > `Pinoc.toml`'s shared
 /// `out_dir` (warns every time, since both generators would write there) >
 /// the dynamic per-generator default (`clients/rust-shank`/`clients/rust-codama`).
-fn resolve_out_dir(out_dir: Option<&str>, generator: Generator) -> Result<String> {
+/// The `[client]` paths configure the Rust clients; TypeScript goes to
+/// `clients/ts` unless `--out-dir` says otherwise.
+fn resolve_out_dir(
+    out_dir: Option<&str>,
+    generator: Generator,
+    language: Language,
+) -> Result<String> {
     if let Some(explicit) = out_dir {
         return Ok(explicit.to_string());
+    }
+    if language == Language::Ts {
+        return Ok("clients/ts".to_string());
     }
 
     let client_config = config::read_pinoc_config_optional()?

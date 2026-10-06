@@ -203,20 +203,22 @@ fn main() -> Result<()> {
                 out_dir,
                 idl_dir,
                 generator,
+                language,
                 auto_install,
                 yes,
                 with_cpi,
                 no_cpi,
             } => {
-                commands::client::generate_client(
+                commands::client::generate_client(commands::client::GenerateArgs {
                     idl_dir,
-                    out_dir.as_deref(),
-                    *generator,
-                    *auto_install,
-                    *yes,
-                    *with_cpi,
-                    *no_cpi,
-                )?;
+                    out_dir: out_dir.as_deref(),
+                    generator: *generator,
+                    language: *language,
+                    auto_install: *auto_install,
+                    yes: *yes,
+                    with_cpi: *with_cpi,
+                    no_cpi: *no_cpi,
+                })?;
             }
         },
         Commands::Config { command } => match command {

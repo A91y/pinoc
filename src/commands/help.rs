@@ -22,7 +22,7 @@ pub fn display_help_banner() -> Result<()> {
     println!("   pinoc keys sync           - Sync program ID with keypair");
     println!("   pinoc idl [--out-dir]     - Regenerate the IDL JSON (also runs automatically on 'pinoc build')");
     println!(
-        "   pinoc client generate [--generator shank|codama] - Generate a Rust client from the IDL"
+        "   pinoc client generate [--generator shank|codama] [--language rust|ts] - Generate a client from the IDL"
     );
     println!("   pinoc config init [-y]    - Create a Pinoc.toml for the current project");
 

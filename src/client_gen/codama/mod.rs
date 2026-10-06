@@ -1,25 +1,26 @@
-//! Shells out to the real Codama JS pipeline to render a Rust client. Node.js
-//! deps live in a project-local `<out_dir>/.pinoc-codama/`, installed only
-//! with explicit consent (`--auto-install`), never silently.
+//! Shells out to the real Codama JS pipeline to render a Rust or TypeScript
+//! client. Node.js deps live in a project-local `<out_dir>/.pinoc-codama/`,
+//! installed only with explicit consent (`--auto-install`), never silently.
 
+use super::Language;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-const PACKAGE_JSON: &str = r#"{
-  "name": "pinoc-codama-tooling",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "codama": "^1.5.0",
-    "@codama/nodes-from-anchor": "^1.3.8",
-    "@codama/renderers-rust": "^1.2.9"
-  }
-}
-"#;
+const RUST_PACKAGES: &[(&str, &str)] = &[
+    ("codama", "^1.5.0"),
+    ("@codama/nodes-from-anchor", "^1.3.8"),
+    ("@codama/renderers-rust", "^1.2.9"),
+];
 
-const CONVERT_SCRIPT: &str = r#"import { rootNodeFromAnchor } from '@codama/nodes-from-anchor';
+const TS_PACKAGES: &[(&str, &str)] = &[
+    ("codama", "^1.5.0"),
+    ("@codama/nodes-from-anchor", "^1.3.8"),
+    ("@codama/renderers-js", "^2.5.0"),
+];
+
+const RUST_SCRIPT: &str = r#"import { rootNodeFromAnchor } from '@codama/nodes-from-anchor';
 import { createFromRoot } from 'codama';
 import { renderVisitor as renderRustVisitor } from '@codama/renderers-rust';
 import fs from 'fs';
@@ -42,28 +43,85 @@ await codama.accept(
 console.log('pinoc-codama: render complete');
 "#;
 
+// renderers-js takes the package folder and writes `src/generated` and a
+// `package.json` (with the `@solana/kit` dependencies) inside it.
+const TS_SCRIPT: &str = r#"import { rootNodeFromAnchor } from '@codama/nodes-from-anchor';
+import { createFromRoot } from 'codama';
+import { renderVisitor as renderJsVisitor } from '@codama/renderers-js';
+import fs from 'fs';
+
+const [, , idlPath, packageFolder] = process.argv;
+const idl = JSON.parse(fs.readFileSync(idlPath, 'utf-8'));
+const rootNode = idl.kind === 'rootNode' ? idl : rootNodeFromAnchor(idl);
+const codama = createFromRoot(rootNode);
+
+await codama.accept(
+  renderJsVisitor(packageFolder, {
+    deleteFolderBeforeRendering: true,
+  }),
+);
+
+console.log('pinoc-codama: render complete');
+"#;
+
+fn package_json(packages: &[(&str, &str)]) -> String {
+    let deps = packages
+        .iter()
+        .map(|(name, range)| format!("    \"{name}\": \"{range}\""))
+        .collect::<Vec<_>>()
+        .join(",\n");
+    format!(
+        "{{\n  \"name\": \"pinoc-codama-tooling\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"dependencies\": {{\n{deps}\n  }}\n}}\n"
+    )
+}
+
 /// Requires Node.js/npm.
-pub fn generate_via_codama(idl_path: &Path, out_dir: &Path, auto_install: bool) -> Result<()> {
+pub fn generate_via_codama(
+    idl_path: &Path,
+    out_dir: &Path,
+    auto_install: bool,
+    language: Language,
+) -> Result<()> {
     check_node_available()?;
 
+    let (packages, script) = match language {
+        Language::Rust => (RUST_PACKAGES, RUST_SCRIPT),
+        Language::Ts => (TS_PACKAGES, TS_SCRIPT),
+    };
     let tooling_dir = out_dir.join(".pinoc-codama");
+    let node_modules = tooling_dir.join("node_modules");
+    let needs_install = packages
+        .iter()
+        .any(|(name, _)| !node_modules.join(name).exists());
+
+    // Decided before anything is written, so a refused run leaves the tree untouched.
+    if needs_install && !auto_install {
+        let specs = packages
+            .iter()
+            .map(|(name, range)| format!("'{name}@{range}'"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let flag = match language {
+            Language::Rust => "",
+            Language::Ts => " --language ts",
+        };
+        anyhow::bail!(
+            "codama's npm dependencies aren't installed yet.\n\n\
+             Install them with:\n  npm install --prefix {} {specs}\n\n\
+             Or rerun with: pinoc client generate --generator codama{flag} --auto-install",
+            tooling_dir.display()
+        );
+    }
+
     fs::create_dir_all(&tooling_dir)
         .with_context(|| format!("Failed to create {}", tooling_dir.display()))?;
-    fs::write(tooling_dir.join("package.json"), PACKAGE_JSON)
+    fs::write(tooling_dir.join("package.json"), package_json(packages))
         .with_context(|| "Failed to write package.json")?;
     ensure_gitignored(".pinoc-codama/")?;
     let script_path = tooling_dir.join("convert_and_render.mjs");
-    fs::write(&script_path, CONVERT_SCRIPT).with_context(|| "Failed to write conversion script")?;
+    fs::write(&script_path, script).with_context(|| "Failed to write conversion script")?;
 
-    if !tooling_dir.join("node_modules").exists() {
-        if !auto_install {
-            anyhow::bail!(
-                "codama's npm dependencies aren't installed yet.\n\n\
-                 Install them with:\n  npm install --prefix {}\n\n\
-                 Or rerun with: pinoc client generate --generator codama --auto-install",
-                tooling_dir.display()
-            );
-        }
+    if needs_install {
         println!("📦 Installing codama (first run only)...");
         let status = Command::new("npm")
             .arg("install")
@@ -76,28 +134,45 @@ pub fn generate_via_codama(idl_path: &Path, out_dir: &Path, auto_install: bool) 
     }
 
     let src_dir = out_dir.join("src");
-    let generated_dir = src_dir.join("generated");
     fs::create_dir_all(&src_dir)?;
 
     let idl_path_abs = fs::canonicalize(idl_path)
         .with_context(|| format!("Failed to resolve {}", idl_path.display()))?;
     let out_dir_abs = fs::canonicalize(out_dir)
         .with_context(|| format!("Failed to resolve {}", out_dir.display()))?;
-    let generated_dir_abs = out_dir_abs.join("src").join("generated");
 
-    let status = Command::new("node")
-        .arg(&script_path)
-        .arg(&idl_path_abs)
-        .arg(&generated_dir_abs)
-        .arg(&out_dir_abs)
+    let mut render = Command::new("node");
+    render.arg(&script_path).arg(&idl_path_abs);
+    match language {
+        Language::Rust => {
+            render
+                .arg(out_dir_abs.join("src").join("generated"))
+                .arg(&out_dir_abs);
+        }
+        Language::Ts => {
+            render.arg(&out_dir_abs);
+        }
+    }
+    let status = render
         .status()
         .with_context(|| "Failed to run codama render script")?;
     if !status.success() {
         anyhow::bail!("codama render failed with exit code: {:?}", status.code());
     }
 
-    fs::write(out_dir.join("Cargo.toml"), cargo_toml())?;
-    fs::write(src_dir.join("lib.rs"), lib_rs(&generated_dir))?;
+    match language {
+        Language::Rust => {
+            fs::write(out_dir.join("Cargo.toml"), cargo_toml())?;
+            fs::write(src_dir.join("lib.rs"), lib_rs(&src_dir.join("generated")))?;
+        }
+        Language::Ts => {
+            // The rendered package.json names `src/index.ts` as its entry point.
+            let index = src_dir.join("index.ts");
+            if !index.exists() {
+                fs::write(index, "export * from './generated';\n")?;
+            }
+        }
+    }
     Ok(())
 }
 

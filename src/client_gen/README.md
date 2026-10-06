@@ -1,6 +1,6 @@
 # Client generation
 
-`pinoc client generate` renders a standalone Rust client crate from the IDL. Run `pinoc build` (or `pinoc idl`) first so the IDL exists. The generated crate is self-contained: `cd clients/rust-shank && cargo build` (or `clients/rust-codama`); it is not part of the program's Cargo workspace.
+`pinoc client generate` renders a standalone Rust client crate from the IDL, or a TypeScript client with `--language ts`. Run `pinoc build` (or `pinoc idl`) first so the IDL exists. The generated crate is self-contained: `cd clients/rust-shank && cargo build` (or `clients/rust-codama`); it is not part of the program's Cargo workspace.
 
 Two generators are available.
 
@@ -12,6 +12,16 @@ pinoc client generate                                     # prompts for shank/co
 pinoc client generate --generator shank
 pinoc client generate --generator codama --auto-install   # install codama's npm deps on first run
 ```
+
+## TypeScript
+
+`--language ts` renders a TypeScript client through the codama generator ([`@codama/renderers-js`](https://github.com/codama-idl/renderers-js)); the default is `--language rust`. It writes `clients/ts/` (`src/generated/`, a `src/index.ts` re-export, and a `package.json` with the `@solana/kit` dependencies), next to the Rust clients. `--language ts` selects codama on its own, with no prompt or confirmation; combining it with `--generator shank` is refused, because the built-in generator only renders Rust.
+
+```bash
+pinoc client generate --language ts --auto-install
+```
+
+The `[client]` paths in `Pinoc.toml` configure the Rust clients only; pass `--out-dir` to move the TypeScript one.
 
 The recommended generator (shank, or codama when Codama macros are detected) is the default when picking interactively. Passing `--generator` against the recommendation asks for confirmation; skip it with `-y`. Non-interactively without `-y`, it refuses rather than guess.
 
@@ -44,7 +54,7 @@ codama_out_dir = "clients/codama"
 
 ## Codama dependency isolation
 
-Codama's npm dependencies live in a project-local `<out-dir>/.pinoc-codama/`, isolated from the rest of the project. If they are not installed, `pinoc` stops and prints the exact `npm install` command rather than installing without consent; pass `--auto-install` to proceed. `.pinoc-codama/` is added to `.gitignore` automatically when the project is a git repo. If Node.js is missing entirely, `pinoc` prints an install pointer.
+Codama's npm dependencies live in a project-local `<out-dir>/.pinoc-codama/`, isolated from the rest of the project. If they are not installed, `pinoc` stops before writing anything (no directory, no `.gitignore` change) and prints the exact `npm install` command rather than installing without consent; pass `--auto-install` to proceed. Rust and TypeScript use different renderer packages, so each language installs its own on first use. `.pinoc-codama/` is added to `.gitignore` automatically when the project is a git repo. If Node.js is missing entirely, `pinoc` prints an install pointer.
 
 ## Zero-copy layout
 
@@ -62,4 +72,4 @@ The generated client (de)serializes as packed borsh, while scaffolded programs r
 | `shank/cpi.rs` | CPI variants (`XxxCpi` / `XxxCpiBuilder`). |
 | `shank/manifest.rs` | The generated crate's `Cargo.toml`. |
 | `shank/shared.rs` | Shared render helpers. |
-| `codama/mod.rs` | Drives the external Codama JS pipeline. |
+| `codama/mod.rs` | Drives the external Codama JS pipeline (Rust and TypeScript renderers). |
