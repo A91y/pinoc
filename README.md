@@ -64,7 +64,7 @@ pinoc deploy            # deploy to the configured cluster
 | `pinoc keys list` | List program keypairs |
 | `pinoc keys sync` | Sync the program ID in source with its keypair |
 | `pinoc idl` | Regenerate the IDL JSON |
-| `pinoc client generate` | Generate a Rust client from the IDL |
+| `pinoc client generate` | Generate a Rust or TypeScript client from the IDL |
 | `pinoc config init` | Create a `Pinoc.toml` for the project |
 
 Common options:
@@ -76,6 +76,7 @@ Common options:
 - `pinoc build --features <FEATURES>` / `pinoc test --features <FEATURES>`: activate cargo features, passed to `cargo build-sbf` and `cargo test` (repeatable or comma-separated, like cargo's own flag)
 - `pinoc test --build-features <FEATURES>`: features for the pre-test SBF build when they differ from the test features (`""` for none)
 - `pinoc test --no-build`: skip the SBF build and test against the existing `target/deploy/*.so`
+- `pinoc client generate --language ts`: generate a TypeScript client (codama generator) into `clients/ts`
 - `pinoc clean --no-preserve`: clean everything, including keypairs
 
 ## Testing
@@ -150,14 +151,14 @@ pinoc keys sync         # rewrite the program ID in source to match the keypair
 
 ## IDL and client generation
 
-`pinoc build` regenerates the IDL at `target/idl/` on every build, and `pinoc client generate` renders a standalone Rust client crate from it. Both understand shank programs and programs using native [Codama](https://github.com/codama-idl/codama) derive macros.
+`pinoc build` regenerates the IDL at `target/idl/` on every build, and `pinoc client generate` renders a standalone Rust client crate from it, or a TypeScript client with `--language ts`. Both understand shank programs and programs using native [Codama](https://github.com/codama-idl/codama) derive macros.
 
 - IDL generation (files produced, generator selection, error handling, the zero-copy padding lint): [src/idl/README.md](src/idl/README.md)
 - Client generation (the shank and Codama generators, CPI variants, `fetch_*` helpers, output paths): [src/client_gen/README.md](src/client_gen/README.md)
 
 ## Linting
 
-`pinoc check` statically lints a program for Solana-specific safety issues that rustc, clippy, and rust-analyzer do not model: account ownership and signer checks, cross-program invocation safety, and zero-copy memory layout. Configurable severity, inline `// pinoc:allow(CODE)` suppression, and `--json` output for CI.
+`pinoc check` statically lints a program for Solana-specific safety issues that rustc, clippy, and rust-analyzer do not model: account ownership and signer checks, cross-program invocation safety, and zero-copy memory layout. Configurable severity, inline `// pinoc:allow(CODE)` suppression, and `--json` output for CI. A run that finds no handlers to analyse says so (`NO-HANDLERS`) instead of reporting a clean result.
 
 ```bash
 pinoc check                  # report findings, exit nonzero on a deny

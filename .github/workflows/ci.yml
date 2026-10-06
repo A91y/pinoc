@@ -19,6 +19,29 @@ jobs:
       - name: Build
         run: cargo build --locked
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test --locked
+
+  test-codama:
+    name: Test (codama renderers, needs npm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test
+        run: cargo test --locked -- --ignored
+
   fmt:
     name: Format
     runs-on: ubuntu-latest
