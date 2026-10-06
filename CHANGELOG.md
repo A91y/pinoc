@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Program constants in the IDL. A `const` with a `// pinoc:constant` comment directly above it is exported to `constants` in `<name>.json` and to `program.constants` in `<name>.codama.json`, since neither extractor can declare one from source. The value is evaluated from the const's own expression (integer literals, `+ - * / <<`, casts, other consts); the type is the declared integer type, or the one named in the marker (`// pinoc:constant(u8)`) for a `usize`. Doc comments are carried over. A marker that cannot be honoured stops `pinoc idl` with the reason. The TypeScript client renders them as `export const`s.
+
+### Fixed
+- The codama Rust client did not compile for a program whose IDL declares PDAs: the generated account helpers call `Pubkey::find_program_address` and `create_program_address`, which `solana-pubkey` only has behind its `curve25519` feature. The generated `Cargo.toml` now enables it when the client derives addresses.
+- Generated clients encoded an enum by variant position even when the program gives its variants explicit values (`Open = 1, Active = 2, Closed = 5`), so the client wrote and read the wrong byte with no error on either side. This affected all three generators: `@codama/renderers-js` and `@codama/renderers-rust` drop the discriminators the IDL carries, and the shank IDL does not record them at all. `pinoc client generate` now emits the declared values: the shank generator reads them from the program source, and the codama clients are rewritten after rendering (`#[borsh(use_discriminant = true)]` in Rust, `{ useValuesAsDiscriminators: true }` on the TypeScript codecs). A rendered enum the rewrite does not recognise fails the command instead of leaving a client that looks finished. Enums numbered `0..n` are unchanged.
+- `pinoc client generate --generator codama` refuses, before rendering, an enum with explicit non-positional discriminators whose variants carry data or that is declared inline, since neither can be corrected.
+
 ## [0.3.2] - 2026-10-07
 
 ### Changed

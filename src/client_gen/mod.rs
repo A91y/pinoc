@@ -1,4 +1,5 @@
 pub mod codama;
+pub mod discriminants;
 pub mod shank;
 
 /// Target language of the generated client. Only the codama generator renders TypeScript.

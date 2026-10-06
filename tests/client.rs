@@ -183,3 +183,174 @@ fn codama_rust_client_handles_an_instruction_without_accounts() {
             .unwrap();
     assert!(settle.contains("positions: Array<"), "{settle}");
 }
+
+const USE_DISCRIMINANT: &str = "#[borsh(use_discriminant = true)]";
+
+#[test]
+fn shank_client_keeps_explicit_enum_discriminants() {
+    let dir = temp_copy("client_enum_values");
+    assert!(pinoc(&dir, &["idl", "--idl-generator", "shank"])
+        .status
+        .success());
+    let out = pinoc(&dir, &["client", "generate", "--generator", "shank", "-y"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("Enums with explicit discriminants (`Status`)"));
+
+    let types = dir.join("clients/rust-shank/src/generated/types");
+    let status = std::fs::read_to_string(types.join("status.rs")).unwrap();
+    assert!(
+        status.contains(&format!(
+            "{USE_DISCRIMINANT}\npub enum Status {{\n    Open = 1,\n    Active = 2,\n    Closed = 5,\n}}"
+        )),
+        "{status}"
+    );
+    // An enum without explicit values is rendered as before.
+    let plain = std::fs::read_to_string(types.join("plain.rs")).unwrap();
+    assert!(
+        plain.contains("pub enum Plain {\n    A,\n    B,\n}"),
+        "{plain}"
+    );
+    assert!(!plain.contains(USE_DISCRIMINANT));
+}
+
+#[test]
+fn enums_that_cannot_be_corrected_stop_the_codama_client() {
+    for (source, expected) in [
+        (
+            "#[derive(codama_macros::CodamaType)]\npub enum Shape { Circle { r: u8 } = 3, Square = 7 }",
+            "enum `shape` has variants with data and explicit discriminators (3, 7)",
+        ),
+        (
+            "#[derive(codama_macros::CodamaAccount)]\npub struct Holder {\n    #[codama(type = enum(variant(name = \"a\", discriminator = 4)))]\n    pub kind: u8,\n}",
+            "declared inline",
+        ),
+    ] {
+        let dir = temp_copy("client_enum_values");
+        let header = "pinocchio::address::declare_id!(\"EfPyA5fx11YAY9XwmrWVddcQe5bBZeNsKA8avqYUH6Qr\");\n";
+        std::fs::write(dir.join("src/lib.rs"), format!("{header}{source}\n")).unwrap();
+        let idl = pinoc(&dir, &["idl", "--idl-generator", "codama"]);
+        if !idl.status.success() {
+            // The attribute form is not available in this Codama release.
+            assert!(expected == "declared inline", "{}", stderr(&idl));
+            continue;
+        }
+        let out = pinoc(&dir, &["client", "generate", "--generator", "codama", "-y"]);
+        assert!(!out.status.success(), "{source}");
+        assert!(stderr(&out).contains(expected), "{}", stderr(&out));
+        assert!(!dir.join("clients").exists(), "{source}");
+    }
+}
+
+/// Needs Node.js and network access: `cargo test -- --ignored`.
+#[test]
+#[ignore]
+fn codama_clients_keep_explicit_enum_discriminants() {
+    let dir = temp_copy("client_enum_values");
+    assert!(pinoc(&dir, &["idl"]).status.success());
+    for language in ["ts", "rust"] {
+        let out = pinoc(
+            &dir,
+            &[
+                "client",
+                "generate",
+                "--generator",
+                "codama",
+                "--language",
+                language,
+                "--auto-install",
+            ],
+        );
+        assert!(out.status.success(), "{language}: {}", stderr(&out));
+        assert!(stdout(&out).contains("Enums with explicit discriminants (`status`)"));
+    }
+
+    let ts = dir.join("clients/ts/src/generated/types");
+    let status = std::fs::read_to_string(ts.join("status.ts")).unwrap();
+    assert!(
+        status.contains("export enum Status {\n  Open = 1,\n  Active = 2,\n  Closed = 5,\n}"),
+        "{status}"
+    );
+    for codec in ["getEnumEncoder", "getEnumDecoder"] {
+        assert!(
+            status.contains(&format!(
+                "{codec}(Status, {{ useValuesAsDiscriminators: true }})"
+            )),
+            "{status}"
+        );
+    }
+    let plain = std::fs::read_to_string(ts.join("plain.ts")).unwrap();
+    assert!(plain.contains("getEnumEncoder(Plain)"), "{plain}");
+
+    let rust = dir.join("clients/rust-codama/src/generated/types");
+    let status = std::fs::read_to_string(rust.join("status.rs")).unwrap();
+    assert!(
+        status.contains(&format!(
+            "{USE_DISCRIMINANT}\npub enum Status {{\nOpen = 1,\nActive = 2,\nClosed = 5,\n}}"
+        )),
+        "{status}"
+    );
+    let plain = std::fs::read_to_string(rust.join("plain.rs")).unwrap();
+    assert!(!plain.contains(USE_DISCRIMINANT), "{plain}");
+}
+
+/// Needs Node.js and network access: `cargo test -- --ignored`.
+#[test]
+#[ignore]
+fn codama_clients_for_a_program_with_pdas_and_constants() {
+    let dir = temp_copy("idl_constants_pda");
+    assert!(pinoc(&dir, &["idl"]).status.success());
+    for language in ["rust", "ts"] {
+        let out = pinoc(
+            &dir,
+            &[
+                "client",
+                "generate",
+                "--generator",
+                "codama",
+                "--language",
+                language,
+                "--auto-install",
+            ],
+        );
+        assert!(out.status.success(), "{language}: {}", stderr(&out));
+    }
+
+    // The PDA helpers need `curve25519`, which solana-pubkey does not enable by default.
+    let rust = dir.join("clients/rust-codama");
+    let vault = std::fs::read_to_string(rust.join("src/generated/accounts/vault.rs")).unwrap();
+    assert!(vault.contains("find_program_address"), "{vault}");
+    let manifest = std::fs::read_to_string(rust.join("Cargo.toml")).unwrap();
+    assert!(
+        manifest.contains(r#"solana-pubkey = { version = "4.2", features = ["curve25519"] }"#),
+        "{manifest}"
+    );
+
+    let constants =
+        std::fs::read_to_string(dir.join("clients/ts/src/generated/constants/idlConstantsPda.ts"))
+            .unwrap();
+    assert!(
+        constants.contains("export const MAX_ATAS: number = 12;"),
+        "{constants}"
+    );
+    assert!(
+        constants.contains("export const MAX_RESERVE_FLOOR: bigint = 100000000000000n;"),
+        "{constants}"
+    );
+
+    // A client with no PDA keeps the plain dependency.
+    let dir = temp_copy("client_enum_values");
+    assert!(pinoc(&dir, &["idl"]).status.success());
+    let out = pinoc(
+        &dir,
+        &[
+            "client",
+            "generate",
+            "--generator",
+            "codama",
+            "--auto-install",
+        ],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let manifest = std::fs::read_to_string(dir.join("clients/rust-codama/Cargo.toml")).unwrap();
+    assert!(manifest.contains("solana-pubkey = \"4.2\"\n"), "{manifest}");
+}

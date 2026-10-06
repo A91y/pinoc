@@ -145,8 +145,17 @@ pub fn generate_client(args: GenerateArgs) -> Result<()> {
                 println!("🔌 CPI variants: generating ({reason})");
             }
 
-            client_gen::shank::generate_rust_client(&idl_path, Path::new(out_dir), generate_cpi)
-                .with_context(|| "Failed to generate Rust client")?;
+            let enums = client_gen::discriminants::for_idl(&idl_path, &src_dir)?;
+            if !enums.is_empty() {
+                println!("{}", client_gen::discriminants::describe(&enums));
+            }
+            client_gen::shank::generate_rust_client(
+                &idl_path,
+                Path::new(out_dir),
+                generate_cpi,
+                &enums,
+            )
+            .with_context(|| "Failed to generate Rust client")?;
             println!("✅ Rust client written to {out_dir}/");
         }
         Generator::Codama => {
@@ -159,11 +168,19 @@ pub fn generate_client(args: GenerateArgs) -> Result<()> {
                     idl_path.display()
                 );
             }
+            // Resolved before rendering, so an enum that cannot be generated
+            // correctly stops the run without leaving a client behind.
+            let enums = client_gen::discriminants::for_idl(&idl_path, &src_dir)
+                .with_context(|| format!("Failed to generate {label} client via codama"))?;
+            if !enums.is_empty() {
+                println!("{}", client_gen::discriminants::describe(&enums));
+            }
             client_gen::codama::generate_via_codama(
                 &idl_path,
                 Path::new(out_dir),
                 auto_install,
                 language,
+                &enums,
             )
             .with_context(|| format!("Failed to generate {label} client via codama"))?;
             println!("✅ {label} client written to {out_dir}/ (via codama)");

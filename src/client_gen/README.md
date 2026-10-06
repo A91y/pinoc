@@ -54,7 +54,20 @@ codama_out_dir = "clients/codama"
 
 ## Codama dependency isolation
 
-Codama's npm dependencies live in a project-local `<out-dir>/.pinoc-codama/`, isolated from the rest of the project. If they are not installed, `pinoc` stops before writing anything (no directory, no `.gitignore` change) and prints the exact `npm install` command rather than installing without consent; pass `--auto-install` to proceed. Rust and TypeScript use different renderer packages, so each language installs its own on first use. `.pinoc-codama/` is added to `.gitignore` automatically when the project is a git repo. If Node.js is missing entirely, `pinoc` prints an install pointer.
+Codama's npm dependencies live in a project-local `<out-dir>/.pinoc-codama/`, isolated from the rest of the project. If they are not installed, `pinoc` stops before writing anything (no directory, no `.gitignore` change) and prints the exact `npm install` command rather than installing without consent; pass `--auto-install` to proceed. Rust and TypeScript use different renderer packages, so each language installs its own on first use. `.pinoc-codama/` is added to `.gitignore` automatically when the project is a git repo. Each output directory has its own `.pinoc-codama/` and the two languages use different renderer packages, so generating both a Rust and a TypeScript client installs two `node_modules` trees (about 35 MB each). If Node.js is missing entirely, `pinoc` prints an install pointer.
+
+## Program-derived addresses
+
+When the IDL declares PDAs, the codama Rust client gets `find_program_address` helpers on its accounts. `solana-pubkey` only provides the derivation functions behind its `curve25519` feature, so the generated `Cargo.toml` enables that feature when the client uses them, and leaves the dependency plain otherwise.
+
+## Enums with explicit discriminants
+
+An enum whose variants carry values that are not their positions (`Open = 1, Active = 2, Closed = 5`) is generated with those values by every generator. This needs saying because none of the renderers does it on its own: borsh and `@solana/kit` encode an enum by variant position, and `@codama/renderers-js` and `@codama/renderers-rust` drop the discriminators the IDL carries, so the client would write and read the wrong byte with no error (upstream: [renderers-js#6](https://github.com/codama-idl/renderers-js/issues/6)).
+
+- **`shank`** reads the values from the program source, since the shank IDL does not record them, and emits `Open = 1` with `#[borsh(use_discriminant = true)]`.
+- **`codama`** rewrites the rendered enum after the renderer runs: explicit values, plus `#[borsh(use_discriminant = true)]` in Rust or `{ useValuesAsDiscriminators: true }` on the codecs in TypeScript. If the rendered code is not what the rewrite expects, the command fails and says the client must not be used. Output from a renderer that already emits the right values is accepted as it is.
+
+`pinoc client generate` prints which enums this applied to. Two shapes are refused, because they cannot be corrected: explicit non-positional discriminators on an enum whose variants carry data, and on an enum declared inline instead of as its own type. An enum numbered `0..n` is generated exactly as before.
 
 ## Zero-copy layout
 
@@ -72,4 +85,5 @@ The generated client (de)serializes as packed borsh, while scaffolded programs r
 | `shank/cpi.rs` | CPI variants (`XxxCpi` / `XxxCpiBuilder`). |
 | `shank/manifest.rs` | The generated crate's `Cargo.toml`. |
 | `shank/shared.rs` | Shared render helpers. |
+| `discriminants.rs` | Finds enums with explicit, non-positional discriminants and makes every generated client use them. |
 | `codama/mod.rs` | Drives the external Codama JS pipeline (Rust and TypeScript renderers). |

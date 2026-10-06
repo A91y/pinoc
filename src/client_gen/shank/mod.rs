@@ -5,6 +5,7 @@ mod manifest;
 mod shared;
 mod types;
 
+use super::discriminants::{self, EnumDiscriminants};
 use accounts::account_rs;
 use anyhow::{Context, Result};
 use heck::ToSnakeCase;
@@ -17,7 +18,12 @@ use std::path::Path;
 use types::{safe_ident, type_def_rs};
 
 /// Mirrors the shape of Codama's Rust renderer output, not the literal renderer itself.
-pub fn generate_rust_client(idl_path: &Path, out_dir: &Path, generate_cpi: bool) -> Result<()> {
+pub fn generate_rust_client(
+    idl_path: &Path,
+    out_dir: &Path,
+    generate_cpi: bool,
+    enums: &[EnumDiscriminants],
+) -> Result<()> {
     let idl_json = fs::read_to_string(idl_path)
         .with_context(|| format!("Failed to read IDL at {}", idl_path.display()))?;
     let idl: Idl = serde_json::from_str(&idl_json).with_context(|| "Failed to parse IDL JSON")?;
@@ -49,7 +55,10 @@ pub fn generate_rust_client(idl_path: &Path, out_dir: &Path, generate_cpi: bool)
         let file_name = ty_def.name.to_snake_case();
         fs::write(
             types_dir.join(format!("{file_name}.rs")),
-            type_def_rs(ty_def)?,
+            type_def_rs(
+                ty_def,
+                discriminants::find(enums, &ty_def.name).map(|e| e.values.as_slice()),
+            )?,
         )?;
         type_mods.push(file_name);
     }

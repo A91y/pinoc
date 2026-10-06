@@ -2,6 +2,7 @@
 //! client. Node.js deps live in a project-local `<out_dir>/.pinoc-codama/`,
 //! installed only with explicit consent (`--auto-install`), never silently.
 
+use super::discriminants::{self, EnumDiscriminants};
 use super::Language;
 use anyhow::{Context, Result};
 use std::fs;
@@ -81,6 +82,7 @@ pub fn generate_via_codama(
     out_dir: &Path,
     auto_install: bool,
     language: Language,
+    enums: &[EnumDiscriminants],
 ) -> Result<()> {
     check_node_available()?;
 
@@ -160,9 +162,19 @@ pub fn generate_via_codama(
         anyhow::bail!("codama render failed with exit code: {:?}", status.code());
     }
 
+    // Neither renderer emits explicit enum discriminants.
+    let generated_dir = src_dir.join("generated");
+    match language {
+        Language::Rust => discriminants::patch_rust(&generated_dir, enums)?,
+        Language::Ts => discriminants::patch_ts(&generated_dir, enums)?,
+    }
+
     match language {
         Language::Rust => {
-            fs::write(out_dir.join("Cargo.toml"), cargo_toml())?;
+            fs::write(
+                out_dir.join("Cargo.toml"),
+                cargo_toml(derives_addresses(&generated_dir)),
+            )?;
             fs::write(src_dir.join("lib.rs"), lib_rs(&src_dir.join("generated")))?;
         }
         Language::Ts => {
@@ -259,7 +271,33 @@ fn lib_rs(generated_dir: &Path) -> String {
     )
 }
 
-fn cargo_toml() -> String {
+/// Whether the rendered client derives program addresses (PDA helpers).
+fn derives_addresses(generated_dir: &Path) -> bool {
+    fn scan(dir: &Path) -> bool {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return false;
+        };
+        entries.flatten().any(|entry| {
+            let path = entry.path();
+            if path.is_dir() {
+                return scan(&path);
+            }
+            fs::read_to_string(&path).is_ok_and(|src| {
+                src.contains("find_program_address") || src.contains("create_program_address")
+            })
+        })
+    }
+    scan(generated_dir)
+}
+
+/// `solana-pubkey` only has the address-derivation functions behind its
+/// `curve25519` feature, so it is enabled when the client uses them.
+fn cargo_toml(derives_addresses: bool) -> String {
+    let solana_pubkey = if derives_addresses {
+        r#"solana-pubkey = { version = "4.2", features = ["curve25519"] }"#
+    } else {
+        r#"solana-pubkey = "4.2""#
+    };
     r#"[package]
 name = "codama-client"
 version = "0.1.0"
@@ -268,7 +306,7 @@ edition = "2021"
 [dependencies]
 borsh = { version = "1", features = ["derive"] }
 solana-address = { version = "2.6", features = ["decode", "borsh"] }
-solana-pubkey = "4.2"
+SOLANA_PUBKEY
 solana-instruction = "3.4"
 solana-account-info = "3"
 solana-program-error = "3"
@@ -277,5 +315,5 @@ thiserror = "2"
 num-derive = "0.4"
 num-traits = "0.2"
 "#
-    .to_string()
+    .replace("SOLANA_PUBKEY", solana_pubkey)
 }
