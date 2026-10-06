@@ -1,6 +1,5 @@
-use crate::check::contract::{Backend, Category, Confidence, Finding, Lint, ParsedFile, Severity};
-use crate::check::facts::{extract_handlers, Validation};
-use crate::check::lints::to_span;
+use crate::check::contract::{Backend, Category, Confidence, Finding, Lint, Severity};
+use crate::check::facts::{Handler, Validation};
 
 /// Account data borrowed through an `*_unchecked` accessor with no `data_len()`
 /// guard, so a shorter-than-expected account is read past its end.
@@ -26,10 +25,9 @@ impl Lint for Zc002Length {
         Confidence::Likely
     }
 
-    fn run(&self, file: &ParsedFile) -> Vec<Finding> {
-        let path = file.path.display().to_string();
+    fn run_handlers(&self, handlers: &[Handler]) -> Vec<Finding> {
         let mut out = Vec::new();
-        for handler in extract_handlers(&file.ast) {
+        for handler in handlers {
             for b in &handler.bindings {
                 if b.delegated
                     || !b.unchecked_read()
@@ -37,7 +35,7 @@ impl Lint for Zc002Length {
                 {
                     continue;
                 }
-                let Some(span) = b.read_span else {
+                let Some(site) = &b.read_site else {
                     continue;
                 };
                 out.push(Finding {
@@ -45,10 +43,11 @@ impl Lint for Zc002Length {
                     id: self.id(),
                     confidence: self.default_confidence(),
                     severity: self.default_severity(),
-                    span: to_span(span, &path),
+                    span: site.to_span(),
                     evidence: format!(
-                        "account `{}` is borrowed unchecked without a `data_len()` guard; a shorter account reads past its end",
-                        b.name
+                        "account `{}` is borrowed unchecked without a `data_len()` guard; a shorter account reads past its end{}",
+                        b.name,
+                        handler.used_in(b)
                     ),
                     fix: Some(format!(
                         "check `{}.data_len() >= size_of::<T>()` before the unchecked borrow",

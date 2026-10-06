@@ -1,6 +1,5 @@
-use crate::check::contract::{Backend, Category, Confidence, Finding, Lint, ParsedFile, Severity};
-use crate::check::facts::{extract_handlers, Validation};
-use crate::check::lints::to_span;
+use crate::check::contract::{Backend, Category, Confidence, Finding, Lint, Severity};
+use crate::check::facts::{Handler, Validation};
 
 /// An account checked against a stored authority id but never verified as a
 /// signer, so anyone can act as that authority by passing its public address.
@@ -26,12 +25,11 @@ impl Lint for Acc002Signer {
         Confidence::Likely
     }
 
-    fn run(&self, file: &ParsedFile) -> Vec<Finding> {
-        let path = file.path.display().to_string();
+    fn run_handlers(&self, handlers: &[Handler]) -> Vec<Finding> {
         let mut out = Vec::new();
-        for handler in extract_handlers(&file.ast) {
+        for handler in handlers {
             for b in &handler.bindings {
-                let Some(span) = b.authority_span else {
+                let Some(site) = &b.authority_site else {
                     continue;
                 };
                 if b.delegated || b.validations.contains(&Validation::Signer) {
@@ -42,7 +40,7 @@ impl Lint for Acc002Signer {
                     id: self.id(),
                     confidence: self.default_confidence(),
                     severity: self.default_severity(),
-                    span: to_span(span, &path),
+                    span: site.to_span(),
                     evidence: format!(
                         "account `{}` is checked against a stored authority but never verified as a signer; anyone can pass this address without signing",
                         b.name

@@ -6,16 +6,27 @@ The command parses every `.rs` file under `src/`, runs each registered lint, app
 
 ## What gets analysed
 
-The account and CPI lints run on **handlers**: any free function, `impl` method (inherent or trait impl), or trait default method that takes an accounts slice, `&[AccountView]` or `&[AccountInfo]` (also inside a tuple parameter such as `(data, accounts): (&[u8], &[AccountView])`). Accounts are bound from that slice by a slice pattern, by index, or by `next_account_info`/`next_account_view`. Method handlers are named `Type::method`.
+The account and CPI lints run on **handlers**: any free function, `impl` method (inherent or trait impl), or trait default method that takes an accounts slice, `&[AccountView]` or `&[AccountInfo]` (also inside a tuple parameter such as `(data, accounts): (&[u8], &[AccountView])`). Accounts are bound from that slice by a slice pattern, by index, by `next_account_info`/`next_account_view`, or by a function in the crate that is handed the slice and returns an account. Method handlers are named `Type::method`.
 
 Accessors are matched by name, covering both current and older Pinocchio APIs: `owner`/`owned_by`/`is_owned_by`, `is_signer`, `key`/`address`, `data_len`, `try_borrow`/`try_borrow_mut`/`try_borrow_data`/`try_borrow_mut_data`, and the unchecked borrows `borrow_unchecked`/`borrow_unchecked_mut`/`borrow_data_unchecked`/`borrow_mut_data_unchecked`.
+
+The analysis covers the whole crate, not one function at a time:
+
+- **Helper functions are read, not skipped.** When an account is passed to a function defined in the crate, `pinoc` applies what that function's body does with it: which checks it makes and how it uses the account, following the helpers it calls in turn. `guards::expect_admin(state, admin)` counts as a signer check only if its body, or a function it calls, tests `is_signer()`. A helper is resolved by its path (`guards::config`, `Config::from_bytes`, `Self::check`, a trait default method called through an implementor); a call that names no single function in the crate, or names one outside it, leaves the account **delegated**, and lints stay quiet about it rather than guess.
+- **Stored accounts are followed.** When a handler moves its accounts into its own type (`Ok(Self { vault, authority })`, the typed-context style), `pinoc` follows them into every function that reaches them through that type: `self.vault` in its methods, `self.accounts.vault` in a struct that holds it, and `ix.accounts.vault` on a local or parameter of either type. A finding on such an account says where it was used and where it was bound.
+
+What establishes an account, for `ACC001-P`: its owner was checked, its address was compared to an expected one (a constant, a stored key, or a derived PDA), the handler found it empty (`is_data_empty()`), or the handler creates it (`CreateAccount { to: account, .. }`). Any of these means the data read cannot be a look-alike's.
+
+What bounds an unchecked borrow, for `ZC002-P`: a `data_len()` read on the account, a `.len()` test on the borrowed bytes, or handing the bytes to a function that tests their length. Bytes handed directly to a function outside the crate are that function's to bound.
 
 Known limits of the `syn` backend:
 
 - Source is discovered under `./src` only.
-- No type resolution: methods are matched by name, on bindings taken from the accounts slice.
-- An account passed to another function is treated as delegated and left alone.
-- Accounts a handler stores in a struct (`Ok(Self { vault, authority })`, the typed-context style) are analysed inside that handler only. Their uses from other functions, such as `fn process(&self)` reading `self.accounts.vault`, are not followed. The run reports this as `UNTRACKED-ACCOUNTS` instead of staying silent.
+- No type resolution: methods are matched by name, and a helper by its path. Two functions that a path cannot tell apart are treated as unknown.
+- Method-call helpers (`self.check(vault)`, `vault.verify()`) are not followed; only path calls are.
+- A check counts wherever it appears in the handler or its helpers. `pinoc` does not prove it runs before the use it guards, or on every path: a helper that checks only under a condition is treated as checking.
+- An owner check counts whichever owner it names. `owned_by(&TOKEN_PROGRAM_ID)` satisfies `ACC001-P` like `owned_by(&crate::ID)`.
+- Accounts stored in a type that nothing in the crate reads back through are reported as `UNTRACKED-ACCOUNTS`.
 - `ZC001-P` skips a struct with nested or foreign-typed fields.
 
 ### Coverage findings
@@ -25,7 +36,7 @@ Two codes report what a run could not analyse, so an empty result is never mista
 | Code | id | Reports |
 |---|---|---|
 | `NO-HANDLERS` | `no-handlers` | No handler was found anywhere (or there is no `src/`), so the account and CPI lints analysed nothing; only the struct-layout lints ran. Replaces `✅ No issues found.`. Allow it for a crate that is not a program. |
-| `UNTRACKED-ACCOUNTS` | `untracked-accounts` | One finding listing the handlers that store their accounts in a struct. Allow it once the limit is acknowledged. |
+| `UNTRACKED-ACCOUNTS` | `untracked-accounts` | One finding listing the handlers that store their accounts in a struct no analysed function reads them back from. Allow it once the limit is acknowledged. |
 
 `--deny all` (or `--deny NO-HANDLERS`) makes CI fail on a run that analysed nothing.
 
@@ -48,7 +59,7 @@ Each finding also carries a **severity** (`deny` fails the check, `warn` is advi
 
 | Code | id | Severity | Confidence | Flags |
 |---|---|---|---|---|
-| `ACC001-P` | `missing-owner` | deny | likely | An account read as this program's state (data borrowed, or passed to a loader like `Type::load`/`from_bytes`) without checking `owner() == program_id`, letting an attacker pass a look-alike account. Runs on the per-account fact table (`facts/`); an account passed to a function the analyzer cannot see into is treated as delegated and left alone. Fix: check the owner before reading the account's data. |
+| `ACC001-P` | `missing-owner` | deny | likely | An account read as this program's state (data borrowed, or passed to a loader like `Type::load`/`from_bytes`) without checking `owner() == program_id`, letting an attacker pass a look-alike account. Runs on the per-account fact table (`facts/`); an account passed to a function outside the crate is treated as delegated and left alone, and an account identified another way (address compared, found empty, or created by the handler) is not flagged. Fix: check the owner before reading the account's data. |
 | `ACC002-P` | `missing-signer` | warn | likely | An account whose key is checked against a stored authority field (`authority.address() == state.authority`, via `==`/`!=` or `.eq()`/`.ne()`) but never `is_signer()`-checked, so anyone can act as that authority by passing its public address. Runs on the fact table; a delegated account is left alone. `warn` because the syn v1 cannot see a signer enforced in a helper or downstream token CPI. Fix: require `is_signer()` on the authority. |
 | `ACC003-P` | `account-confusion` | warn | heuristic | An account named like a known singleton (`config`/`settings`/`*_config`/`*_settings`) read as trusted state without its key ever being compared to an expected address, letting an attacker substitute a look-alike account with attacker-chosen contents. Runs on the fact table; a delegated account is left alone. `heuristic`, so it is **hidden at the default `likely` threshold** (see the note below); surface it with `--deny ACC003-P` or `confidence_threshold = "heuristic"`. Fix: compare the account's key to the expected address (or derived PDA) before reading it. |
 | `CPI001-P` | `arbitrary-cpi` | warn | likely | `invoke`/`invoke_signed` whose `program_id` comes from a caller-supplied account whose key is never compared to an expected id (`==`/`!=` or an assert/require macro), letting an attacker redirect the call to malicious code. Runs on the fact table: typed-builder CPIs (`CreateAccount { … }.invoke_signed(…)`) and constant/param program ids are ignored, and a delegated program account is left alone. `warn` because the syn v1 cannot see cross-function key checks; promote with `--deny CPI001-P`. Fix: compare the program account's key to the expected id before invoking. |
@@ -145,6 +156,6 @@ It means exactly `N` findings *were produced* but held back because their confid
 | `contract.rs` | `Finding`, the `Lint` trait, and `Severity` / `Confidence` / `Category` / `Backend` / `Span`. The JSON shape is frozen here. |
 | `suppress.rs` | Parses `// pinoc:allow(CODE)` comments and matches them to findings. |
 | `output.rs` | Human and `--json` renderers. |
-| `facts/mod.rs` | Per-account fact table: for each handler, how each account is validated and used, plus the program-id source of each `invoke`. Account/CPI lints run on this. |
+| `facts/mod.rs` | Per-account fact table, built over the whole crate: for each handler, how each account is validated and used, including through helper functions and from the functions that read stored accounts back, plus the program-id source of each `invoke`. Account/CPI lints run on this. |
 | `lints/mod.rs` | The lint registry and span helpers. |
 | `lints/acc001_owner.rs`, `lints/acc002_signer.rs`, `lints/acc003_confusion.rs`, `lints/cpi001_arbitrary_cpi.rs`, `lints/zc001_padding.rs`, `lints/zc002_length.rs`, `lints/zc003_repr_c.rs` | The individual checks. |

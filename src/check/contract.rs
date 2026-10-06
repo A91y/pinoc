@@ -72,6 +72,14 @@ pub trait Lint {
     fn backend(&self) -> Backend;
     fn default_severity(&self) -> Severity;
     fn default_confidence(&self) -> Confidence;
-    /// Raw findings for one file, before config severity and suppression.
-    fn run(&self, file: &ParsedFile) -> Vec<Finding>;
+    /// Raw findings for one file, before config severity and suppression. The
+    /// struct-layout lints work here.
+    fn run(&self, _file: &ParsedFile) -> Vec<Finding> {
+        Vec::new()
+    }
+    /// Raw findings over the crate's handler fact tables. The account and CPI
+    /// lints work here, since a handler's accounts can be used in other files.
+    fn run_handlers(&self, _handlers: &[crate::check::facts::Handler]) -> Vec<Finding> {
+        Vec::new()
+    }
 }

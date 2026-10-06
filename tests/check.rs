@@ -106,26 +106,80 @@ fn missing_src_is_reported() {
     assert!(text.contains("no `src/` directory"), "{text}");
 }
 
-#[test]
-fn typed_context_and_pinocchio_0_11_names() {
-    let found = findings("check_typed_context", &[]);
-    let got: Vec<(&str, u64)> = found
+/// `(code, file, line)` of each finding, and the evidence of the one at `index`.
+fn located(findings: &[Value]) -> Vec<(&str, &str, u64)> {
+    findings
         .iter()
         .map(|f| {
             (
                 f["code"].as_str().unwrap(),
+                f["span"]["file"].as_str().unwrap(),
                 f["span"]["line"].as_u64().unwrap(),
             )
         })
-        .collect();
+        .collect()
+}
+
+#[test]
+fn typed_context_and_pinocchio_0_11_names() {
+    let found = findings("check_typed_context", &[]);
+    // `process` reads `vault` through `self.accounts`, with no owner or length
+    // check anywhere; the two free functions use the 0.11 accessor names.
     assert_eq!(
-        got,
-        [("UNTRACKED-ACCOUNTS", 0), ("ZC002-P", 53), ("ACC001-P", 64),]
+        located(&found),
+        [
+            ("ACC001-P", "src/lib.rs", 40),
+            ("ZC002-P", "src/lib.rs", 40),
+            ("ZC002-P", "src/lib.rs", 53),
+            ("ACC001-P", "src/lib.rs", 64),
+        ]
     );
-    assert_eq!(found[0]["span"]["file"], "src");
-    let untracked = found[0]["evidence"].as_str().unwrap();
+    let evidence = found[0]["evidence"].as_str().unwrap();
     assert!(
-        untracked.contains("`DepositAccounts::try_from`"),
-        "{untracked}"
+        evidence.contains("(in `Deposit::process`, bound in `DepositAccounts::try_from`)"),
+        "{evidence}"
+    );
+}
+
+#[test]
+fn accounts_are_followed_from_try_from_into_process_and_helpers() {
+    let found = findings("check_context", &[]);
+    assert_eq!(
+        located(&found),
+        [
+            // Stored, and never read back through the type.
+            ("UNTRACKED-ACCOUNTS", "src", 0),
+            // Owner checked through a helper, bytes given to an unbounded cast.
+            ("ZC002-P", "src/instructions/set_fee.rs", 20),
+            // `try_from` checks nothing; `process` loads without an owner check
+            // and compares the authority's address without requiring a signature.
+            ("ACC001-P", "src/instructions/withdraw.rs", 27),
+            ("ACC002-P", "src/instructions/withdraw.rs", 28),
+            // Read through a local of the instruction type, in another file.
+            ("ACC001-P", "src/processor.rs", 5),
+        ]
+    );
+    // `deposit` (checks through helpers) and `close` (the same checks inline)
+    // are in the fixture and produce nothing.
+
+    let evidence = |index: usize| found[index]["evidence"].as_str().unwrap();
+    assert!(
+        evidence(0).contains("`ArchiveAccounts::try_from`"),
+        "{}",
+        evidence(0)
+    );
+    assert!(!evidence(0).contains("Deposit"), "{}", evidence(0));
+    assert!(
+        evidence(2).contains("account `vault`")
+            && evidence(2)
+                .contains("(in `Withdraw::process`, bound in `WithdrawAccounts::try_from`)"),
+        "{}",
+        evidence(2)
+    );
+    assert!(evidence(3).contains("account `admin`"), "{}", evidence(3));
+    assert!(
+        evidence(4).contains("(in `process_sweep`, bound in `SweepAccounts::try_from`)"),
+        "{}",
+        evidence(4)
     );
 }

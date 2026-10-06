@@ -73,37 +73,50 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
         collect_rs_files(src_dir, &mut files)?;
     }
 
-    let mut raw = Vec::new();
     let mut supp = Suppressions::default();
-    let mut handler_count = 0;
-    let mut storing: Vec<(String, Span)> = Vec::new();
+    let mut parsed = Vec::new();
     for path in &files {
         let src = std::fs::read_to_string(path)?;
         supp.scan(&path.display().to_string(), &src);
         let Ok(ast) = syn::parse_file(&src) else {
             continue;
         };
-        let parsed = ParsedFile {
+        parsed.push(ParsedFile {
             path: path.clone(),
             src,
             ast,
-        };
-        for lint in &lints {
-            raw.extend(lint.run(&parsed));
-        }
-        let file = path.display().to_string();
-        for handler in facts::extract_handlers(&parsed.ast) {
-            handler_count += 1;
-            if let Some(span) = handler.stores_accounts {
-                storing.push((handler.name, lints::to_span(span, &file)));
-            }
+        });
+    }
+
+    // The account and CPI lints run on fact tables built over the whole crate.
+    let handlers = facts::analyze(&parsed);
+    let mut by_lint: Vec<Vec<Finding>> = lints.iter().map(|l| l.run_handlers(&handlers)).collect();
+
+    // Findings are emitted file by file, each lint in turn within a file.
+    let mut raw = Vec::new();
+    for file in &parsed {
+        let name = file.path.display().to_string();
+        for (lint, crate_wide) in lints.iter().zip(&mut by_lint) {
+            raw.extend(lint.run(file));
+            let (here, rest) = std::mem::take(crate_wide)
+                .into_iter()
+                .partition(|f: &Finding| f.span.file == name);
+            raw.extend::<Vec<Finding>>(here);
+            *crate_wide = rest;
         }
     }
+
+    // A handler whose stored accounts nothing reaches is not followed.
+    let mut storing: Vec<(String, Span)> = handlers
+        .iter()
+        .filter(|h| h.followed_by.is_empty())
+        .filter_map(|h| Some((h.name.clone(), h.stores_accounts.as_ref()?.to_span())))
+        .collect();
     storing.sort_by(|a, b| (&a.1.file, a.1.line).cmp(&(&b.1.file, b.1.line)));
     raw.extend(coverage_findings(
         src_dir.exists(),
         files.len(),
-        handler_count,
+        handlers.len(),
         &storing,
     ));
 
@@ -180,7 +193,7 @@ fn coverage_findings(
                 col: 0,
             },
             evidence: format!(
-                "{} handler(s) store their accounts in a struct ({names}). Checks inside those handlers are analysed, but uses of the stored accounts from other functions (such as `fn process(&self)`) are not followed, so a missing check there is not reported",
+                "{} handler(s) store their accounts in a struct that no analysed function reads them back from ({names}). Checks inside those handlers are analysed, but uses of the stored accounts elsewhere are not followed, so a missing check there is not reported",
                 storing.len()
             ),
             fix: Some(
