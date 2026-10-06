@@ -114,7 +114,7 @@ pub fn generate_idl(
             let fallback_errors = rendered["errors"].as_array().cloned().unwrap_or_default();
             let mismatch = codama_native::version_mismatch(&crate_root);
             if let Some(note) = &mismatch {
-                println!("ℹ️  Codama versions differ: {note}.");
+                println!("ℹ️  Codama versions: {note}.");
             }
             codama_native::extract_native_codama_idl(
                 &crate_root,

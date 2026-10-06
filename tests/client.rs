@@ -150,3 +150,36 @@ fn codama_renders_typescript_and_rust() {
         .join("clients/rust-codama/src/generated/errors/mod.rs")
         .exists());
 }
+
+/// Needs Node.js and network access: `cargo test -- --ignored`.
+#[test]
+#[ignore]
+fn codama_rust_client_handles_an_instruction_without_accounts() {
+    let dir = temp_copy("idl_codama_tail");
+    assert!(pinoc(&dir, &["idl"]).status.success());
+    let out = pinoc(
+        &dir,
+        &[
+            "client",
+            "generate",
+            "--generator",
+            "codama",
+            "--auto-install",
+        ],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let ping =
+        std::fs::read_to_string(dir.join("clients/rust-codama/src/generated/instructions/ping.rs"))
+            .unwrap();
+    assert!(!ping.contains("NaN"), "{ping}");
+
+    let out = pinoc(
+        &dir,
+        &["client", "generate", "--language", "ts", "--auto-install"],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let settle =
+        std::fs::read_to_string(dir.join("clients/ts/src/generated/instructions/settle.ts"))
+            .unwrap();
+    assert!(settle.contains("positions: Array<"), "{settle}");
+}

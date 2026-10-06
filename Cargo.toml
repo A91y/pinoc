@@ -21,7 +21,7 @@ shank_idl = "0.4.9"
 heck = "0.5"
 syn = { version = "2.0", features = ["full", "visit", "extra-traits"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
-codama = "0.9.3"
+codama = "0.13.2"
 
 [[bin]]
 name = "pinoc"

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The native Codama extractor moves from codama 0.9.3 to 0.13.2, so `#[codama(..)]` directives added since 0.9 are understood: `remaining_accounts(..)` for a variable account tail, `array(..)` and the other new type keywords, `display`, `export`. To use them the program must also bump `codama-macros` to 0.13: the derives validate their attributes when the program compiles, and 0.9 rejects the new ones. Programs on an older `codama-macros` that use no new directive extract as before. Bumping `codama-macros` does not change what the program does: its `.so` keeps its length and behaviour, but the compiler may lay the code out differently, so builds across the bump need not be byte-identical. For a program using no new directive, `<name>.codama.json` differs only in the spec version (`1.8.0`) and a `display` hint on discriminator fields, and the generated Rust and TypeScript clients are byte-identical.
+- The note about differing Codama versions says which way they differ: newer macros can accept a directive the extractor lacks, and older macros reject at compile time a directive the extractor accepts, so `pinoc idl` can succeed on source that does not build.
+
+### Fixed
+- The location of a rejected Codama attribute was lost when the item had a doc comment or another attribute above it: the error quoted the comment and named no file. It now points at the item's own line.
+- codama 0.13 omits empty lists from the IDL, which the Rust renderer does not expect: an instruction with no accounts rendered as `Vec::with_capacity(NaN + ..)` and the client did not compile. `pinoc idl` writes the empty lists back (24 fields across 15 node kinds), so `<name>.codama.json` keeps the shape earlier releases produced.
+
 ## [0.3.1] - 2026-10-06
 
 ### Added

@@ -32,13 +32,22 @@ fn is_native(dir: &std::path::Path) -> bool {
 fn codama_dependency_output_matches_0_3_0() {
     let dir = temp_copy("idl_codama_errors");
     assert!(idl(&dir).contains(NATIVE));
-    for file in ["idl_codama_errors.json", "idl_codama_errors.codama.json"] {
-        assert_eq!(
-            std::fs::read_to_string(dir.join("target/idl").join(file)).unwrap(),
-            std::fs::read_to_string(dir.join("expected").join(file)).unwrap(),
-            "{file}"
-        );
-    }
+    let file = "idl_codama_errors.json";
+    assert_eq!(
+        std::fs::read_to_string(dir.join("target/idl").join(file)).unwrap(),
+        std::fs::read_to_string(dir.join("expected").join(file)).unwrap(),
+    );
+
+    // The native IDL is the same document; only the Codama spec version moved
+    // with the extractor.
+    let file = "idl_codama_errors.codama.json";
+    let mut actual = read_json(&dir.join("target/idl").join(file));
+    let mut expected = read_json(&dir.join("expected").join(file));
+    assert_eq!(expected["version"], "1.6.0");
+    assert_eq!(actual["version"], "1.8.0");
+    actual["version"] = serde_json::Value::Null;
+    expected["version"] = serde_json::Value::Null;
+    assert_eq!(actual, expected);
 }
 
 #[test]
@@ -99,31 +108,38 @@ fn no_derives_keeps_the_existing_message() {
 }
 
 #[test]
-fn a_different_codama_minor_is_reported() {
+fn a_different_codama_minor_is_reported_either_way() {
+    const NOTE: &str = "Codama versions:";
     let lock = |version: &str| {
         format!("version = 3\n\n[[package]]\nname = \"codama-macros\"\nversion = \"{version}\"\n")
     };
 
-    let dir = project("[dependencies.codama-macros]\nversion = \"0.13\"");
-    std::fs::write(dir.join("Cargo.lock"), lock("0.13.2")).unwrap();
+    let dir = project("[dependencies.codama-macros]\nversion = \"0.99\"");
+    std::fs::write(dir.join("Cargo.lock"), lock("0.99.1")).unwrap();
     let out = idl(&dir);
-    assert!(out.contains("Codama versions differ"), "{out}");
-    assert!(out.contains("codama-macros 0.13.2"), "{out}");
+    assert!(out.contains(NOTE), "{out}");
+    assert!(out.contains("codama-macros 0.99.1, newer than"), "{out}");
 
     // Without a lock file the manifest requirement is used.
     std::fs::remove_file(dir.join("Cargo.lock")).unwrap();
-    assert!(idl(&dir).contains("codama-macros 0.13"));
+    assert!(idl(&dir).contains("codama-macros 0.99"));
 
-    std::fs::write(dir.join("Cargo.lock"), lock("0.9.1")).unwrap();
-    assert!(!idl(&dir).contains("Codama versions differ"));
+    // Older macros reject at compile time what the extractor accepts.
+    std::fs::write(dir.join("Cargo.lock"), lock("0.9.3")).unwrap();
+    let out = idl(&dir);
+    assert!(out.contains("codama-macros 0.9.3, older than"), "{out}");
+    assert!(out.contains("does not compile"), "{out}");
 
-    // A directive the bundled extractor does not have stops the run and says why.
-    std::fs::write(dir.join("Cargo.lock"), lock("0.13.2")).unwrap();
+    std::fs::write(dir.join("Cargo.lock"), lock("0.13.0")).unwrap();
+    assert!(!idl(&dir).contains(NOTE));
+
+    // A directive the bundled extractor does not have stops the run and says where.
+    std::fs::write(dir.join("Cargo.lock"), lock("0.99.1")).unwrap();
     let lib = dir.join("src/lib.rs");
     let source = std::fs::read_to_string(&lib).unwrap();
     let with_new = source.replace(
         "    pub authority: [u8; 32],",
-        "    #[codama(display(skip))]\n    pub authority: [u8; 32],",
+        "    #[codama(from_the_future(skip))]\n    pub authority: [u8; 32],",
     );
     assert_ne!(with_new, source);
     std::fs::write(&lib, with_new).unwrap();
@@ -131,18 +147,18 @@ fn a_different_codama_minor_is_reported() {
     assert!(!failed.status.success());
     let err = stderr(&failed);
     assert!(
-        err.contains("unrecognized codama directive `display`"),
+        err.contains("unrecognized codama directive `from_the_future`"),
         "{err}"
     );
     assert!(err.contains("--> src/lib.rs:12:14"), "{err}");
-    assert!(err.contains("#[codama(display(skip))]"), "{err}");
+    assert!(err.contains("#[codama(from_the_future(skip))]"), "{err}");
     assert_eq!(
         err.matches("unrecognized codama directive").count(),
         1,
         "{err}"
     );
     assert!(
-        err.contains("this program uses codama-macros 0.13.2"),
+        err.contains("this program uses codama-macros 0.99.1"),
         "{err}"
     );
 }
@@ -164,4 +180,28 @@ fn bundled_codama_constant_matches_the_lock_file() {
         source.contains(&format!("BUNDLED_CODAMA: &str = \"{locked}\"")),
         "BUNDLED_CODAMA is not {locked}"
     );
+}
+
+#[test]
+fn a_rejected_field_with_a_doc_comment_is_located_at_the_field() {
+    let dir = temp_copy("idl_codama_errors");
+    let lib = dir.join("src/lib.rs");
+    let source = std::fs::read_to_string(&lib).unwrap();
+    let with_const = source.replace(
+        "    pub authority: [u8; 32],",
+        "    /// Sized by a const, which the extractor\n    /// does not evaluate.\n    #[allow(dead_code)]\n    pub authority: [u8; SIZE],",
+    );
+    assert_ne!(with_const, source);
+    std::fs::write(&lib, with_const).unwrap();
+
+    let failed = pinoc(&dir, &["idl"]);
+    assert!(!failed.status.success());
+    let err = stderr(&failed);
+    assert!(
+        err.contains("does not resolve to a `structFieldTypeNode`"),
+        "{err}"
+    );
+    assert!(err.contains("--> src/lib.rs:15:5"), "{err}");
+    assert!(err.contains("|  pub authority: [u8; SIZE],"), "{err}");
+    assert!(!err.contains("Sized by a const"), "{err}");
 }

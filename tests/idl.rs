@@ -28,7 +28,7 @@ fn native_codama_errors_are_not_overridden() {
     let dir = temp_copy("idl_codama_errors");
     let out = pinoc(&dir, &["idl"]);
     assert!(out.status.success(), "{}", stdout(&out));
-    assert!(!stdout(&out).contains("added"));
+    assert!(!stdout(&out).contains("from the shank IDL"));
 
     let idl = read_json(&dir.join("target/idl/idl_codama_errors.codama.json"));
     let errors = idl["program"]["errors"].as_array().unwrap();
@@ -230,4 +230,49 @@ fn forced_native_extraction_without_macros_says_where_errors_come_from() {
     assert!(!text.contains("No `CodamaErrors` found"), "{text}");
     let idl = read_json(&dir.join("target/idl/client_program.codama.json"));
     assert_eq!(idl["program"]["errors"][0]["name"], "ownerMismatch");
+}
+
+#[test]
+fn codama_0_13_directives_and_restored_empty_lists() {
+    let dir = temp_copy("idl_codama_tail");
+    let out = pinoc(&dir, &["idl"]);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        stdout(&out),
+        common::stderr(&out)
+    );
+    let idl = read_json(&dir.join("target/idl/idl_codama_tail.codama.json"));
+    let instruction = |name: &str| {
+        idl["program"]["instructions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["name"] == name)
+            .unwrap()
+            .clone()
+    };
+
+    // A variable account tail.
+    assert_eq!(
+        instruction("settle")["remainingAccounts"],
+        serde_json::json!([{
+            "kind": "instructionRemainingAccountsNode",
+            "isWritable": true,
+            "value": { "kind": "argumentValueNode", "name": "positions" },
+        }])
+    );
+
+    // codama 0.13 omits empty lists; the renderers need them present.
+    assert_eq!(instruction("ping")["accounts"], serde_json::json!([]));
+    assert_eq!(idl["additionalPrograms"], serde_json::json!([]));
+    for list in ["constants", "definedTypes", "errors", "events", "pdas"] {
+        assert_eq!(idl["program"][list], serde_json::json!([]), "{list}");
+    }
+
+    // An array whose Rust length is a const, declared through the attribute.
+    let tiers = &idl["program"]["accounts"][0]["data"]["fields"][1];
+    assert_eq!(tiers["name"], "tiers");
+    assert_eq!(tiers["type"]["kind"], "arrayTypeNode");
+    assert_eq!(tiers["type"]["count"]["value"], 4);
 }

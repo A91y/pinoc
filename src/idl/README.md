@@ -18,16 +18,29 @@ Extraction is powered by [shank](https://github.com/metaplex-foundation/shank), 
 
 Either `codama` or `codama-macros` in the program's manifest enables the native path. Both export the same derives. They differ in what they link:
 
-- **`codama-macros`** is a proc-macro crate: compiled for the host, never linked into the program. Adding it and its derives leaves the `.so` byte-identical. It is the one to use with `nostd_panic_handler!()`. Import the derives from `codama_macros`.
+- **`codama-macros`** is a proc-macro crate: compiled for the host, never linked into the program. Adding it and its derives leaves the `.so` byte-identical to a build without it. It is the one to use with `nostd_panic_handler!()`. Import the derives from `codama_macros`.
 - **`codama`** is a normal library that is not `#![no_std]`, so depending on it links `std` into the program. That fails under `nostd_panic_handler!()` with `E0152: found duplicate lang item panic_impl`, and builds under `default_panic_handler!()` or `entrypoint!`.
 
 The panic handler decides which one fits, and the two handlers are not interchangeable: `default_panic_handler!()` defines no handler of its own and relies on `std` being linked, so a program using it with only proc-macro dependencies fails with "`#[panic_handler]` function required, but not found". Choosing `default_panic_handler!()` is choosing to link `std`. The `--with-example` scaffold does this (it depends on `shank`, see [Shank and `no_std`](#shank-and-no_std)).
 
 Detection reads the manifest's `[dependencies]` and every `[target.'cfg(..)'.dependencies]` table, and matches a renamed dependency on its `package` (`macros = { package = "codama-macros", version = "0.9" }`). When a `Codama*` derive is present but neither crate is a dependency, `pinoc idl` takes the shim path and says so: `(Codama derives found, but neither `codama` nor `codama-macros` is a dependency)`.
 
-`pinoc` extracts with **codama 0.9.3**, parsing the `#[codama(..)]` attributes itself; the version of the macro crate the program depends on only decides what compiles. Pin `codama-macros`/`codama` to `0.9` to keep the two in step. A newer macro crate works as long as the program uses directives 0.9.3 has: a directive added later (`display`, `export`, `remaining_accounts` as of 0.13) stops the extraction with `unrecognized codama directive` instead of being ignored. When the program's resolved version is a different minor, `pinoc idl` says so. A rejected directive is reported with its name, file, line, and the source line.
+`pinoc` extracts with **codama 0.13.2**. A `#[codama(..)]` directive is parsed twice: by the program's `codama-macros` when the program compiles (the derives validate their attributes on the host, even though they emit nothing), and by pinoc's extractor when the IDL is generated. Both have to recognise it.
 
-The pin is deliberate. codama 0.13 emits a newer IDL (spec 1.8, with empty lists omitted) that the Rust renderer `pinoc client generate --generator codama` uses does not read correctly: an instruction with no accounts renders as `Vec::with_capacity(NaN + ..)` and the client does not compile. Moving the extractor forward means moving that renderer too.
+- **To use a directive added after 0.9**, the program must depend on a `codama-macros` release that has it: `remaining_accounts(..)` for a variable account tail, `array(..)`, `link(..)` and the other type keywords, `display`, `export` all need 0.13. With `codama-macros` 0.9.3 they fail the build with `error: unrecognized codama directive` or `unrecognized type`, although `pinoc idl`, which does not compile the program, extracts them.
+- **An older macro crate extracts the same way** as long as the source uses only directives it has; releases so far have only added directives.
+- **A macro crate newer than 0.13** can accept a directive pinoc's extractor does not have, which stops the extraction. The rejected directive is reported with its name, file, line, and the source line.
+
+`pinoc idl` prints a note whenever the program's `codama-macros` is a different minor release than the extractor, saying which of the two cases applies. Bumping `codama-macros` does not change what the program does: the `.so` keeps its length and behaviour, though the compiler may lay the code out differently, so two builds across a bump need not be byte-identical.
+
+Things to know when annotating:
+
+- **Array lengths must be literals.** Codama does not evaluate a `const` in an array size. A field typed `[Tier; TIER_COUNT]` with no attribute fails with "does not resolve to a `structFieldTypeNode`", and a const inside the attribute is rejected too. Keep the const in the Rust type and give the IDL type a literal: `#[codama(type = array(number(u64), 4))]`. Nothing ties that literal to the const, and a wrong one compiles and silently produces a wrong IDL, so keep a guard beside the field: `const _: () = assert!(TIER_COUNT == 4);`.
+- **A type with its own `CodamaType` derive is referenced with `link("name")`** inside `array`, `option`, `set`, `map` or `tuple`: `#[codama(type = array(link("tier"), 4))]`. `defined(..)` is not a keyword.
+- **A variable account tail** is `#[codama(remaining_accounts(argument("positions")))]` on the instruction, with optional `signer`, `writable` and `optional` flags that apply to the whole tail. It becomes a flat list input on the generated client; Codama has no node for a tail made of groups or of entries that differ.
+- **Optional accounts in the middle of a list** work with `#[codama(optional_account_strategy = omitted)]`: the TypeScript client drops an omitted optional account and the ones after it move up, so one instruction can describe two account layouts that differ by optional entries. A tail declared with `remaining_accounts` is appended after that.
+
+codama 0.13 writes a newer IDL (spec 1.8) and leaves out lists that are empty, which the pinned Rust renderer does not expect: an instruction with no accounts rendered as `Vec::with_capacity(NaN + ..)`. `pinoc` writes those empty lists back into `<name>.codama.json`, so the file keeps the shape earlier releases produced and both the Rust and TypeScript renderers read it. For a program that uses no new directive, the IDL differs from pinoc 0.3.1's only in the spec version and a `display` hint on discriminator fields, and the generated clients are identical.
 
 You can tell the outputs apart: native carries a top-level `"kind": "rootNode"`; the shim carries `"metadata": {"origin": "shank", …}` instead.
 

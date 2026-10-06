@@ -22,7 +22,7 @@ const CODAMA_DERIVES: &[&str] = &[
 ];
 
 /// The `codama` release pinoc's own extractor is built from.
-pub const BUNDLED_CODAMA: &str = "0.9.3";
+pub const BUNDLED_CODAMA: &str = "0.13.2";
 
 /// Either crate provides the derives. `codama-macros` is the one a program
 /// using `nostd_panic_handler!` can depend on, since the `codama` facade links `std`.
@@ -94,13 +94,22 @@ fn codama_dependency(manifest: &toml::Value) -> Option<(String, Option<String>)>
 
 /// A note for a program whose Codama macros are from a different minor release
 /// than pinoc's extractor, or `None` when they match or the version is unknown.
+/// A directive is parsed twice, by the program's `codama-macros` when it
+/// compiles and by pinoc's extractor here, and either side can lack one.
 pub fn version_mismatch(crate_root: &Path) -> Option<String> {
     let version = program_codama_version(crate_root)?;
-    (minor_of(&version)? != minor_of(BUNDLED_CODAMA)?).then(|| {
-        format!(
-            "this program uses codama-macros {version}, and pinoc extracts with codama {BUNDLED_CODAMA}. The `#[codama(..)]` directives differ between releases; one that {BUNDLED_CODAMA} does not recognise stops the extraction"
-        )
-    })
+    let (program, bundled) = (minor_of(&version)?, minor_of(BUNDLED_CODAMA)?);
+    if program > bundled {
+        Some(format!(
+            "this program uses codama-macros {version}, newer than the codama {BUNDLED_CODAMA} pinoc extracts with. A `#[codama(..)]` directive added after {BUNDLED_CODAMA} stops the extraction"
+        ))
+    } else if program < bundled {
+        Some(format!(
+            "this program uses codama-macros {version}, older than the codama {BUNDLED_CODAMA} pinoc extracts with. A `#[codama(..)]` directive added after {version} extracts here but does not compile; bump codama-macros to use one"
+        ))
+    } else {
+        None
+    }
 }
 
 /// The `codama-macros` version the program resolves to: from the nearest
@@ -216,6 +225,7 @@ pub fn extract_native_codama_idl(
         .and_then(|codama| codama.get_json_idl())
         .map_err(|e| extraction_error(e, crate_root, src_dir))?;
     let mut value: Value = serde_json::from_str(&json)?;
+    restore_empty_lists(&mut value);
     if let Some(address) = resolved_address {
         value["program"]["publicKey"] = Value::String(address.to_string());
     }
@@ -251,6 +261,56 @@ pub fn extract_native_codama_idl(
     }
 
     Ok(serde_json::to_string_pretty(&value)?)
+}
+
+/// List fields codama 0.13 leaves out when empty and earlier releases always
+/// wrote, by node kind. The JS renderers read these without a default: a missing
+/// `accounts` renders as `Vec::with_capacity(NaN + ..)` in the Rust client.
+const LIST_FIELDS: &[(&str, &[&str])] = &[
+    ("rootNode", &["additionalPrograms"]),
+    (
+        "programNode",
+        &[
+            "accounts",
+            "constants",
+            "definedTypes",
+            "errors",
+            "events",
+            "instructions",
+            "pdas",
+        ],
+    ),
+    ("instructionNode", &["accounts", "arguments"]),
+    ("pdaNode", &["seeds"]),
+    ("pdaValueNode", &["seeds"]),
+    ("structTypeNode", &["fields"]),
+    ("enumTypeNode", &["variants"]),
+    ("tupleTypeNode", &["items"]),
+    ("hiddenPrefixTypeNode", &["prefix"]),
+    ("hiddenSuffixTypeNode", &["suffix"]),
+    ("structValueNode", &["fields"]),
+    ("arrayValueNode", &["items"]),
+    ("setValueNode", &["items"]),
+    ("tupleValueNode", &["items"]),
+    ("mapValueNode", &["entries"]),
+];
+
+/// Writes the empty lists back, so the IDL keeps the shape its consumers expect.
+fn restore_empty_lists(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            let kind = map.get("kind").and_then(|k| k.as_str()).unwrap_or_default();
+            if let Some((_, fields)) = LIST_FIELDS.iter().find(|(k, _)| *k == kind) {
+                for field in *fields {
+                    map.entry(*field)
+                        .or_insert_with(|| Value::Array(Vec::new()));
+                }
+            }
+            map.values_mut().for_each(restore_empty_lists);
+        }
+        Value::Array(items) => items.iter_mut().for_each(restore_empty_lists),
+        _ => {}
+    }
 }
 
 /// Lowercased alphanumerics of a name. Pairs a Rust variant with Codama's
@@ -395,40 +455,54 @@ fn extraction_error(
         .map(|e| {
             let start = e.span().start();
             let token = e.span().source_text().unwrap_or_default();
-            let token_note = if token.is_empty() {
+            // The span of a rejected field starts at its doc comments and
+            // attributes. Report the first line of the item itself.
+            let skipped = token
+                .lines()
+                .take_while(|line| {
+                    let line = line.trim_start();
+                    line.starts_with("//") || line.starts_with("#[")
+                })
+                .count();
+            let item = token.lines().nth(skipped).unwrap_or_default().trim();
+            let item_note = if item.is_empty() {
                 String::new()
             } else {
-                format!(" `{token}`")
+                format!(" `{item}`")
             };
+            let line_number = start.line + skipped;
+
             // A span carries no file: find the sources that have this token at this position.
+            let first_line = token.lines().next().unwrap_or_default();
             let matches: Vec<&(std::path::PathBuf, String)> = files
                 .iter()
                 .filter(|(_, src)| {
-                    !token.is_empty()
+                    !first_line.is_empty()
                         && src
                             .lines()
                             .nth(start.line.saturating_sub(1))
                             .and_then(|line| line.get(char_to_byte(line, start.column)..))
-                            .is_some_and(|rest| rest.starts_with(&token))
+                            .is_some_and(|rest| rest.starts_with(first_line))
                 })
                 .collect();
+            let column = |src: &str| {
+                let line = src.lines().nth(line_number - 1).unwrap_or_default();
+                if skipped == 0 {
+                    start.column + 1
+                } else {
+                    line.len() - line.trim_start().len() + 1
+                }
+            };
             match matches.as_slice() {
                 [(path, src)] => format!(
-                    "{e}{token_note}\n  --> {}:{}:{}\n   |  {}",
+                    "{e}{item_note}\n  --> {}:{line_number}:{}\n   |  {}",
                     path.display(),
-                    start.line,
-                    start.column + 1,
-                    src.lines().nth(start.line - 1).unwrap_or_default().trim()
+                    column(src),
+                    src.lines().nth(line_number - 1).unwrap_or_default().trim()
                 ),
-                [] => format!(
-                    "{e}{token_note} (line {}, column {})",
-                    start.line,
-                    start.column + 1
-                ),
+                [] => format!("{e}{item_note} (line {line_number})"),
                 several => format!(
-                    "{e}{token_note} at line {}, column {} of one of: {}",
-                    start.line,
-                    start.column + 1,
+                    "{e}{item_note} at line {line_number} of one of: {}",
                     several
                         .iter()
                         .map(|(path, _)| path.display().to_string())
