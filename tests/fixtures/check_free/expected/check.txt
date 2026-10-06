@@ -1,0 +1,21 @@
+deny ACC001-P src/handlers.rs:9:21
+    account `vault` is read as state without checking its owner; an attacker can pass a look-alike account
+    fix: check `vault.owner() == program_id` before reading its data
+warn ACC002-P src/handlers.rs:70:7
+    account `authority` is checked against a stored authority but never verified as a signer; anyone can pass this address without signing
+    fix: require `authority.is_signer()` before trusting it as the authority
+warn CPI001-P src/handlers.rs:151:4
+    account `target` is invoked as a program without checking its key against an expected id; an attacker can point it at malicious code
+    fix: compare `target.key()` to the expected program id before invoking
+deny ZC002-P src/handlers.rs:55:30
+    account `vault` is borrowed unchecked without a `data_len()` guard; a shorter account reads past its end
+    fix: check `vault.data_len() >= size_of::<T>()` before the unchecked borrow
+warn ZC001-P src/state.rs:6:0
+    `PaddedVault` has 7 byte(s) of implicit padding (layout 48 vs packed 41); zero-copy reads won't match its packed borsh form
+    fix: add explicit `_padding: [u8; 7]` field(s)
+deny ZC003-P src/args.rs:4:0
+    `NoReprState` derives ShankAccount/ShankType (read zero-copy) but is not #[repr(C)]; the default layout may reorder fields
+    fix: add #[repr(C)]
+
+3 deny, 3 warn
+1 lower-confidence finding below the `likely` threshold hidden; lower `confidence_threshold` (or `--deny <code>`) to show them.

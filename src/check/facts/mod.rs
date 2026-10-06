@@ -1,8 +1,9 @@
 //! Per-account fact table. For each instruction handler it records how each
 //! account binding was validated and used, so account/CPI lints reduce to short
-//! predicates over the table. syn-only: when an account flows through a construct
-//! it can't follow (passed to a user function, moved into a struct), the binding
-//! is marked `delegated` and lints stay quiet rather than guess.
+//! predicates over the table. syn-only: when an account is passed to a user
+//! function the binding is marked `delegated` and lints stay quiet rather than
+//! guess. Accounts a method moves into its own type (`Self { vault, .. }`) are
+//! recorded on the handler as `stores_accounts`; their uses elsewhere are not followed.
 
 #![allow(dead_code)]
 
@@ -90,9 +91,13 @@ impl AccountBinding {
 }
 
 pub struct Handler {
+    /// `function` for a free function, `Type::method` for a method.
     pub name: String,
     pub bindings: Vec<AccountBinding>,
     pub cpi_sites: Vec<CpiSite>,
+    /// Where the handler moves account bindings into its own type (`Self { vault, .. }`).
+    /// Those accounts are then used from other functions, which this table does not follow.
+    pub stores_accounts: Option<proc_macro2::Span>,
 }
 
 /// One `invoke`/`invoke_signed` call site.
@@ -103,6 +108,7 @@ pub struct CpiSite {
 }
 
 const ACCOUNT_SLICE_TYPES: &[&str] = &["AccountInfo", "AccountView"];
+const ACCOUNT_ITER_FUNCS: &[&str] = &["next_account_info", "next_account_view"];
 const LOADER_METHODS: &[&str] = &[
     "load",
     "load_mut",
@@ -136,7 +142,7 @@ const LOG_MACROS: &[&str] = &[
 fn validation_for_method(name: &str) -> Option<Validation> {
     Some(match name {
         "is_signer" => Validation::Signer,
-        "owner" => Validation::Owner,
+        "owner" | "owned_by" | "is_owned_by" => Validation::Owner,
         "key" | "address" => Validation::Key,
         "is_writable" => Validation::Writable,
         "is_data_empty" | "data_is_empty" => Validation::Uninitialized,
@@ -155,11 +161,11 @@ fn borrow_use_for_method(name: &str) -> Option<Use> {
             mut_: true,
             unchecked: false,
         },
-        "borrow_data_unchecked" => Use::BorrowData {
+        "borrow_data_unchecked" | "borrow_unchecked" => Use::BorrowData {
             mut_: false,
             unchecked: true,
         },
-        "borrow_mut_data_unchecked" => Use::BorrowData {
+        "borrow_mut_data_unchecked" | "borrow_unchecked_mut" => Use::BorrowData {
             mut_: true,
             unchecked: true,
         },
@@ -168,7 +174,8 @@ fn borrow_use_for_method(name: &str) -> Option<Use> {
 }
 
 /// Extracts a fact table for every instruction handler in `file`. A handler is a
-/// `fn` taking a `&[AccountInfo]`/`&[AccountView]` slice.
+/// free function, `impl` method, or trait default method taking a
+/// `&[AccountInfo]`/`&[AccountView]` slice.
 pub fn extract_handlers(file: &syn::File) -> Vec<Handler> {
     let mut handlers = Vec::new();
     collect_from_items(&file.items, &mut handlers);
@@ -178,13 +185,23 @@ pub fn extract_handlers(file: &syn::File) -> Vec<Handler> {
 fn collect_from_items(items: &[syn::Item], out: &mut Vec<Handler>) {
     for item in items {
         match item {
-            syn::Item::Fn(f) => {
-                if let Some(accounts_param) = accounts_param_name(&f.sig) {
-                    out.push(extract_handler(
-                        &f.sig.ident.to_string(),
-                        accounts_param,
-                        &f.block,
-                    ));
+            syn::Item::Fn(f) => push_handler(out, None, &f.sig, &f.block),
+            syn::Item::Impl(imp) => {
+                let ty = last_segment_ident(&imp.self_ty);
+                for item in &imp.items {
+                    if let syn::ImplItem::Fn(f) = item {
+                        push_handler(out, ty.as_deref(), &f.sig, &f.block);
+                    }
+                }
+            }
+            syn::Item::Trait(t) => {
+                let ty = t.ident.to_string();
+                for item in &t.items {
+                    if let syn::TraitItem::Fn(f) = item {
+                        if let Some(block) = &f.default {
+                            push_handler(out, Some(&ty), &f.sig, block);
+                        }
+                    }
                 }
             }
             syn::Item::Mod(m) => {
@@ -197,20 +214,46 @@ fn collect_from_items(items: &[syn::Item], out: &mut Vec<Handler>) {
     }
 }
 
-/// The parameter name of the accounts slice, if the signature has one.
+fn push_handler(
+    out: &mut Vec<Handler>,
+    self_ty: Option<&str>,
+    sig: &syn::Signature,
+    block: &syn::Block,
+) {
+    let Some(accounts_param) = accounts_param_name(sig) else {
+        return;
+    };
+    let name = match self_ty {
+        Some(ty) => format!("{ty}::{}", sig.ident),
+        None => sig.ident.to_string(),
+    };
+    out.push(extract_handler(&name, self_ty, accounts_param, block));
+}
+
+/// The parameter name of the accounts slice, if the signature has one. Also matches a
+/// tuple parameter such as `(data, accounts): (&[u8], &[AccountView])`.
 fn accounts_param_name(sig: &syn::Signature) -> Option<String> {
     for input in &sig.inputs {
         let syn::FnArg::Typed(pat_ty) = input else {
             continue;
         };
-        if !is_account_slice(&pat_ty.ty) {
-            continue;
-        }
-        if let syn::Pat::Ident(p) = pat_ty.pat.as_ref() {
-            return Some(p.ident.to_string());
+        if let Some(name) = slice_param_name(&pat_ty.pat, &pat_ty.ty) {
+            return Some(name);
         }
     }
     None
+}
+
+fn slice_param_name(pat: &syn::Pat, ty: &syn::Type) -> Option<String> {
+    match (pat, ty) {
+        (syn::Pat::Ident(p), _) if is_account_slice(ty) => Some(p.ident.to_string()),
+        (syn::Pat::Tuple(pats), syn::Type::Tuple(tys)) => pats
+            .elems
+            .iter()
+            .zip(&tys.elems)
+            .find_map(|(p, t)| slice_param_name(p, t)),
+        _ => None,
+    }
 }
 
 fn is_account_slice(ty: &syn::Type) -> bool {
@@ -223,9 +266,16 @@ fn is_account_slice(ty: &syn::Type) -> bool {
     last_segment_ident(&s.elem).is_some_and(|id| ACCOUNT_SLICE_TYPES.contains(&id.as_str()))
 }
 
-fn extract_handler(name: &str, accounts_param: String, block: &syn::Block) -> Handler {
+fn extract_handler(
+    name: &str,
+    self_ty: Option<&str>,
+    accounts_param: String,
+    block: &syn::Block,
+) -> Handler {
     let mut ex = Extractor {
         accounts_param,
+        self_ty: self_ty.map(str::to_string),
+        stores_accounts: None,
         bindings: Vec::new(),
         index: HashMap::new(),
         aliases: HashMap::new(),
@@ -239,11 +289,15 @@ fn extract_handler(name: &str, accounts_param: String, block: &syn::Block) -> Ha
         name: name.to_string(),
         bindings: ex.bindings,
         cpi_sites: ex.cpi_sites,
+        stores_accounts: ex.stores_accounts,
     }
 }
 
 struct Extractor {
     accounts_param: String,
+    /// The `impl` type the handler is a method of, if any.
+    self_ty: Option<String>,
+    stores_accounts: Option<proc_macro2::Span>,
     bindings: Vec<AccountBinding>,
     index: HashMap<String, usize>,
     aliases: HashMap<String, String>,
@@ -301,6 +355,8 @@ impl Extractor {
                 }
                 for (method, val) in [
                     ("owner", Validation::Owner),
+                    ("owned_by", Validation::Owner),
+                    ("is_owned_by", Validation::Owner),
                     ("key", Validation::Key),
                     ("address", Validation::Key),
                     // A key in a macro is almost always a comparison.
@@ -372,6 +428,22 @@ impl<'ast> Visit<'ast> for Extractor {
         syn::visit::visit_expr_call(self, node);
     }
 
+    fn visit_expr_struct(&mut self, node: &'ast syn::ExprStruct) {
+        // `Self { vault, authority }` in a method: the accounts leave this function
+        // inside the handler's own type.
+        let is_self_ty = node.path.segments.last().is_some_and(|seg| {
+            seg.ident == "Self" || self.self_ty.as_deref().is_some_and(|ty| seg.ident == ty)
+        });
+        if is_self_ty
+            && self.self_ty.is_some()
+            && self.stores_accounts.is_none()
+            && node.fields.iter().any(|f| self.resolve(&f.expr).is_some())
+        {
+            self.stores_accounts = Some(node.span());
+        }
+        syn::visit::visit_expr_struct(self, node);
+    }
+
     fn visit_macro(&mut self, mac: &'ast syn::Macro) {
         let name = mac
             .path
@@ -427,7 +499,7 @@ impl Extractor {
     fn is_iter_next(&self, expr: &syn::Expr) -> bool {
         let expr = strip_try(expr);
         matches!(expr, syn::Expr::Call(c)
-            if last_call_segment(&c.func).is_some_and(|s| s == "next_account_info"))
+            if last_call_segment(&c.func).is_some_and(|s| ACCOUNT_ITER_FUNCS.contains(&s.as_str())))
     }
 
     fn classify_call(&mut self, node: &syn::ExprCall) {

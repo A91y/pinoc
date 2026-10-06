@@ -10,6 +10,11 @@ use crate::config;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+/// Coverage findings: they report what the run could not analyse, not a defect in
+/// the program. Both are configurable like any lint code.
+const NO_HANDLERS: &str = "NO-HANDLERS";
+const UNTRACKED_ACCOUNTS: &str = "UNTRACKED-ACCOUNTS";
+
 pub struct CheckOptions {
     pub json: bool,
     pub deny: Vec<String>,
@@ -58,7 +63,8 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
     let cfg = load_effective_config(&opts)?;
 
     let lints = lints::registry();
-    let known: Vec<&'static str> = lints.iter().map(|l| l.code()).collect();
+    let mut known: Vec<&'static str> = lints.iter().map(|l| l.code()).collect();
+    known.extend([NO_HANDLERS, UNTRACKED_ACCOUNTS]);
     reject_unknown_codes(&cfg, &known)?;
 
     let src_dir = Path::new("src");
@@ -69,6 +75,8 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
 
     let mut raw = Vec::new();
     let mut supp = Suppressions::default();
+    let mut handler_count = 0;
+    let mut storing: Vec<(String, Span)> = Vec::new();
     for path in &files {
         let src = std::fs::read_to_string(path)?;
         supp.scan(&path.display().to_string(), &src);
@@ -83,7 +91,21 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
         for lint in &lints {
             raw.extend(lint.run(&parsed));
         }
+        let file = path.display().to_string();
+        for handler in facts::extract_handlers(&parsed.ast) {
+            handler_count += 1;
+            if let Some(span) = handler.stores_accounts {
+                storing.push((handler.name, lints::to_span(span, &file)));
+            }
+        }
     }
+    storing.sort_by(|a, b| (&a.1.file, a.1.line).cmp(&(&b.1.file, b.1.line)));
+    raw.extend(coverage_findings(
+        src_dir.exists(),
+        files.len(),
+        handler_count,
+        &storing,
+    ));
 
     let processed = process_findings(raw, &cfg, &mut supp);
     if opts.json {
@@ -96,6 +118,78 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
         );
     }
     Ok(processed.exit_code)
+}
+
+/// Findings for the parts of the program the run could not analyse, so an empty
+/// result is never mistaken for a clean one.
+fn coverage_findings(
+    src_found: bool,
+    file_count: usize,
+    handler_count: usize,
+    storing: &[(String, Span)],
+) -> Vec<Finding> {
+    let mut out = Vec::new();
+    if handler_count == 0 {
+        let (evidence, fix) = if src_found {
+            (
+                format!(
+                    "no instruction handlers found in {file_count} source file(s): no function or method takes an `&[AccountView]`/`&[AccountInfo]` slice, so the account and CPI lints (ACC*, CPI*, ZC002-P) analysed nothing. Only the struct-layout lints (ZC001-P, ZC003-P) ran. This is not a clean result"
+                ),
+                "if this crate is not a program, allow `NO-HANDLERS`; otherwise its handlers take their accounts in a form `pinoc check` does not follow",
+            )
+        } else {
+            (
+                "no `src/` directory in the current directory, so nothing was analysed. This is not a clean result".to_string(),
+                "run `pinoc check` from the program crate's root",
+            )
+        };
+        out.push(Finding {
+            code: NO_HANDLERS,
+            id: "no-handlers",
+            confidence: Confidence::Definite,
+            severity: Severity::Warn,
+            span: Span {
+                file: "src".to_string(),
+                line: 0,
+                col: 0,
+            },
+            evidence,
+            fix: Some(fix.to_string()),
+        });
+    }
+    if !storing.is_empty() {
+        const SHOWN: usize = 5;
+        let mut names = storing
+            .iter()
+            .take(SHOWN)
+            .map(|(name, _)| format!("`{name}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        if storing.len() > SHOWN {
+            names.push_str(&format!(", and {} more", storing.len() - SHOWN));
+        }
+        out.push(Finding {
+            code: UNTRACKED_ACCOUNTS,
+            id: "untracked-accounts",
+            confidence: Confidence::Definite,
+            severity: Severity::Warn,
+            // A project-wide limit, so it is not pinned to any one of the handlers.
+            span: Span {
+                file: "src".to_string(),
+                line: 0,
+                col: 0,
+            },
+            evidence: format!(
+                "{} handler(s) store their accounts in a struct ({names}). Checks inside those handlers are analysed, but uses of the stored accounts from other functions (such as `fn process(&self)`) are not followed, so a missing check there is not reported",
+                storing.len()
+            ),
+            fix: Some(
+                "no code change needed; allow `UNTRACKED-ACCOUNTS` once the limit is acknowledged"
+                    .to_string(),
+            ),
+        });
+    }
+    out
 }
 
 /// Outcome of applying config and suppression to the raw findings.

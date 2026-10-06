@@ -4,6 +4,31 @@
 
 The command parses every `.rs` file under `src/`, runs each registered lint, applies config and suppression, prints findings, and exits nonzero when a surviving finding is `deny`.
 
+## What gets analysed
+
+The account and CPI lints run on **handlers**: any free function, `impl` method (inherent or trait impl), or trait default method that takes an accounts slice, `&[AccountView]` or `&[AccountInfo]` (also inside a tuple parameter such as `(data, accounts): (&[u8], &[AccountView])`). Accounts are bound from that slice by a slice pattern, by index, or by `next_account_info`/`next_account_view`. Method handlers are named `Type::method`.
+
+Accessors are matched by name, covering both current and older Pinocchio APIs: `owner`/`owned_by`/`is_owned_by`, `is_signer`, `key`/`address`, `data_len`, `try_borrow`/`try_borrow_mut`/`try_borrow_data`/`try_borrow_mut_data`, and the unchecked borrows `borrow_unchecked`/`borrow_unchecked_mut`/`borrow_data_unchecked`/`borrow_mut_data_unchecked`.
+
+Known limits of the `syn` backend:
+
+- Source is discovered under `./src` only.
+- No type resolution: methods are matched by name, on bindings taken from the accounts slice.
+- An account passed to another function is treated as delegated and left alone.
+- Accounts a handler stores in a struct (`Ok(Self { vault, authority })`, the typed-context style) are analysed inside that handler only. Their uses from other functions, such as `fn process(&self)` reading `self.accounts.vault`, are not followed. The run reports this as `UNTRACKED-ACCOUNTS` instead of staying silent.
+- `ZC001-P` skips a struct with nested or foreign-typed fields.
+
+### Coverage findings
+
+Two codes report what a run could not analyse, so an empty result is never mistaken for a clean one. They are `warn`/`definite`, appear in `--json`, and are configured like any other code (`--deny`, `--allow`, `Pinoc.toml [check]`). Both describe the whole project, so they are reported at `src:0:0` and not at a source line.
+
+| Code | id | Reports |
+|---|---|---|
+| `NO-HANDLERS` | `no-handlers` | No handler was found anywhere (or there is no `src/`), so the account and CPI lints analysed nothing; only the struct-layout lints ran. Replaces `✅ No issues found.`. Allow it for a crate that is not a program. |
+| `UNTRACKED-ACCOUNTS` | `untracked-accounts` | One finding listing the handlers that store their accounts in a struct. Allow it once the limit is acknowledged. |
+
+`--deny all` (or `--deny NO-HANDLERS`) makes CI fail on a run that analysed nothing.
+
 ## Lint codes
 
 Every check has two stable identifiers, frozen once released:
@@ -116,7 +141,7 @@ It means exactly `N` findings *were produced* but held back because their confid
 
 | Path | Responsibility |
 | --- | --- |
-| `mod.rs` | Discovers and parses source, runs lints, applies config severity, suppression, and the confidence threshold, sets the exit code. |
+| `mod.rs` | Discovers and parses source, runs lints, adds the coverage findings, applies config severity, suppression, and the confidence threshold, sets the exit code. |
 | `contract.rs` | `Finding`, the `Lint` trait, and `Severity` / `Confidence` / `Category` / `Backend` / `Span`. The JSON shape is frozen here. |
 | `suppress.rs` | Parses `// pinoc:allow(CODE)` comments and matches them to findings. |
 | `output.rs` | Human and `--json` renderers. |

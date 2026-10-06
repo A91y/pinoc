@@ -1,0 +1,80 @@
+[
+  {
+    "code": "ACC001-P",
+    "id": "missing-owner",
+    "confidence": "likely",
+    "severity": "deny",
+    "span": {
+      "file": "src/handlers.rs",
+      "line": 9,
+      "col": 21
+    },
+    "evidence": "account `vault` is read as state without checking its owner; an attacker can pass a look-alike account",
+    "fix": "check `vault.owner() == program_id` before reading its data"
+  },
+  {
+    "code": "ACC002-P",
+    "id": "missing-signer",
+    "confidence": "likely",
+    "severity": "warn",
+    "span": {
+      "file": "src/handlers.rs",
+      "line": 70,
+      "col": 7
+    },
+    "evidence": "account `authority` is checked against a stored authority but never verified as a signer; anyone can pass this address without signing",
+    "fix": "require `authority.is_signer()` before trusting it as the authority"
+  },
+  {
+    "code": "CPI001-P",
+    "id": "arbitrary-cpi",
+    "confidence": "likely",
+    "severity": "warn",
+    "span": {
+      "file": "src/handlers.rs",
+      "line": 151,
+      "col": 4
+    },
+    "evidence": "account `target` is invoked as a program without checking its key against an expected id; an attacker can point it at malicious code",
+    "fix": "compare `target.key()` to the expected program id before invoking"
+  },
+  {
+    "code": "ZC002-P",
+    "id": "unchecked-length-before-cast",
+    "confidence": "likely",
+    "severity": "deny",
+    "span": {
+      "file": "src/handlers.rs",
+      "line": 55,
+      "col": 30
+    },
+    "evidence": "account `vault` is borrowed unchecked without a `data_len()` guard; a shorter account reads past its end",
+    "fix": "check `vault.data_len() >= size_of::<T>()` before the unchecked borrow"
+  },
+  {
+    "code": "ZC001-P",
+    "id": "layout-padding-mismatch",
+    "confidence": "likely",
+    "severity": "warn",
+    "span": {
+      "file": "src/state.rs",
+      "line": 6,
+      "col": 0
+    },
+    "evidence": "`PaddedVault` has 7 byte(s) of implicit padding (layout 48 vs packed 41); zero-copy reads won't match its packed borsh form",
+    "fix": "add explicit `_padding: [u8; 7]` field(s)"
+  },
+  {
+    "code": "ZC003-P",
+    "id": "missing-repr-c",
+    "confidence": "definite",
+    "severity": "deny",
+    "span": {
+      "file": "src/args.rs",
+      "line": 4,
+      "col": 0
+    },
+    "evidence": "`NoReprState` derives ShankAccount/ShankType (read zero-copy) but is not #[repr(C)]; the default layout may reorder fields",
+    "fix": "add #[repr(C)]"
+  }
+]
