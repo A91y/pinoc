@@ -2,6 +2,7 @@
 //! etc.) and, when present, extracts a native Codama IDL directly instead of
 //! going through the shank IDL + compatibility-shim path.
 
+use super::constants::Constant;
 use super::manual_errors::ManualErrors;
 use anyhow::{Context, Result};
 use heck::ToLowerCamelCase;
@@ -220,12 +221,22 @@ pub fn extract_native_codama_idl(
     resolved_address: Option<&str>,
     fallback_errors: &[Value],
     manual: Option<&ManualErrors>,
+    constants: &[Constant],
 ) -> Result<String> {
     let json = codama::Codama::load(crate_root)
         .and_then(|codama| codama.get_json_idl())
         .map_err(|e| extraction_error(e, crate_root, src_dir))?;
     let mut value: Value = serde_json::from_str(&json)?;
     restore_empty_lists(&mut value);
+    // Codama has no directive that declares a program constant.
+    if let Some(list) = value["program"]["constants"].as_array_mut() {
+        for constant in constants {
+            let node = constant.to_codama();
+            if !list.iter().any(|existing| existing["name"] == node["name"]) {
+                list.push(node);
+            }
+        }
+    }
     if let Some(address) = resolved_address {
         value["program"]["publicKey"] = Value::String(address.to_string());
     }

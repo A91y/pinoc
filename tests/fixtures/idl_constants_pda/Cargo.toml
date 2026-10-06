@@ -1,0 +1,11 @@
+[package]
+name = "idl_constants_pda"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+codama-macros = "0.13"
+pinocchio = "0.11.2"

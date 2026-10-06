@@ -88,6 +88,30 @@ Codes are the values the program returns, not the raw discriminants: `pinoc` eva
 
 Native Codama extraction only sees enums deriving `CodamaErrors`. When it finds none, `pinoc` fills `program.errors` in `<name>.codama.json` from the error list of `<name>.json` (thiserror-derived or the manual fallback above), so choosing the native path never drops errors the shank path reports. Errors Codama extracted itself are never replaced. Codama emits an empty message for an error without an `#[error("..")]` attribute; those are filled from the same list.
 
+## Constants
+
+Neither extractor can declare a program constant from source (Codama has a `constantNode` but no directive that builds one), so `pinoc` exports a `const` that carries a marker comment directly above it:
+
+```rust
+/// Open positions a trader may hold.
+// pinoc:constant
+pub const MAX_OPEN_POSITIONS: u8 = 8;
+
+// pinoc:constant(u8)
+pub const MAX_ATAS: usize = 12;
+
+// pinoc:constant
+pub const MAX_RESERVE_FLOOR: u64 = 100_000_000 * MILLION;
+```
+
+- The **value** is evaluated from the const's own expression: integer literals, `+ - * / <<`, casts, and references to other consts in the crate. Nothing is repeated, so it cannot drift from the program.
+- The **type** is the declared one when it is a fixed-width integer (`u8` to `u128`, `i8` to `i128`). A `usize` has no wire type, so name one in the marker: `// pinoc:constant(u8)`. The value is checked against it.
+- Doc comments become the constant's docs. The marker may sit above or below them, with no blank line before the `const`.
+
+Each one is written to `constants` in `<name>.json` (`{name, type, value}`) and to `program.constants` in `<name>.codama.json` (a `constantNode`, with the name in camelCase). A marker that cannot be honoured is an error, not a skipped constant: a type that is not an integer, a value that does not fit or that pinoc cannot evaluate, a value beyond 2^53 (an IDL number is a JSON number, which a JavaScript client reads as a double), or a marker that is not directly above a `const`. Only integers are supported.
+
+The TypeScript client renders them (`constants/<program>.ts`, `export const MAX_ATAS: number = 12;`, `bigint` for 64-bit types). The Rust renderers do not render program constants.
+
 ## Zero-copy padding lint
 
 The generated client (de)serializes as packed borsh, while scaffolded programs read instructions and accounts zero-copy via `#[repr(C)]` + pointer casts. The two layouts agree only when the `#[repr(C)]` struct has no implicit alignment padding. `pinoc build` and `pinoc idl` warn when any `ShankAccount`/`ShankType` `#[repr(C)]` struct has padding (e.g. a `u64` after a `u8`). The fix is explicit `_padding: [u8; N]` fields; scaffolded structs also carry a compile-time `assert!(size_of::<T>() == …)` guard.
@@ -100,4 +124,5 @@ The generated client (de)serializes as packed borsh, while scaffolded programs r
 | `codama.rs` | The shim: rewrites shank's IDL into Codama-compatible JSON. |
 | `codama_native.rs` | Detects Codama derive macros and drives Codama's own extractor. |
 | `manual_errors.rs` | Fallback error extraction for enums without `thiserror::Error`. |
+| `constants.rs` | Finds `// pinoc:constant` markers and evaluates the marked consts. |
 | `padding_lint.rs` | Flags `#[repr(C)]` IDL structs with implicit padding. |

@@ -6,6 +6,7 @@
 
 pub mod codama;
 pub mod codama_native;
+pub mod constants;
 pub mod manual_errors;
 pub mod padding_lint;
 
@@ -87,7 +88,15 @@ pub fn generate_idl(
         None => None,
     };
 
-    let idl_json = render_idl_json(&idl, errors.as_deref())
+    let constants = constants::find_constants(src_dir)?;
+    if !constants.is_empty() {
+        println!(
+            "ℹ️  {} constant(s) added to the IDL from `// pinoc:constant` markers",
+            constants.len()
+        );
+    }
+
+    let idl_json = render_idl_json(&idl, errors.as_deref(), &constants)
         .with_context(|| "Failed to serialize IDL to JSON")?;
 
     let (resolved_generator, forced) = resolve_generator(generator_override, &crate_root, src_dir)?;
@@ -100,7 +109,7 @@ pub fn generate_idl(
             };
             println!("📄 .codama.json: shank IDL + compatibility shim ({reason})");
             let codama_idl = codama::to_codama_compatible(&idl);
-            render_idl_json(&codama_idl, errors.as_deref())
+            render_idl_json(&codama_idl, errors.as_deref(), &constants)
                 .with_context(|| "Failed to serialize codama-compatible IDL to JSON")?
         }
         Generator::Codama => {
@@ -122,6 +131,7 @@ pub fn generate_idl(
                 idl.metadata.address.as_deref(),
                 &fallback_errors,
                 manual.as_ref(),
+                &constants,
             )
             .with_context(|| match &mismatch {
                 Some(note) => format!("Failed to extract native Codama IDL. Note: {note}."),
@@ -213,12 +223,18 @@ fn resolve_generator(
 fn render_idl_json(
     idl: &shank_idl::idl::Idl,
     errors: Option<&[ManualErrorCode]>,
+    constants: &[constants::Constant],
 ) -> Result<String> {
     let mut value = serde_json::to_value(idl)?;
     if let Some(errors) = errors {
         if !errors.is_empty() {
             value["errors"] = serde_json::to_value(errors)?;
         }
+    }
+    if !constants.is_empty() {
+        let mut list = value["constants"].as_array().cloned().unwrap_or_default();
+        list.extend(constants.iter().map(constants::Constant::to_shank));
+        value["constants"] = serde_json::Value::Array(list);
     }
     Ok(serde_json::to_string_pretty(&value)?)
 }
