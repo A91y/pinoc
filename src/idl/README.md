@@ -12,7 +12,22 @@ Extraction is powered by [shank](https://github.com/metaplex-foundation/shank), 
 `<name>.codama.json` is produced one of two ways, chosen automatically:
 
 - **Shim** (default for shank programs). Rewrites shank's native output so it round-trips through Codama's JS tooling: shank emits pubkey fields as `{"defined": "Address"}`, which `@codama/nodes-from-anchor` mishandles, so the shim rewrites them to the standard `"publicKey"` IDL type. The plain `<name>.json` is left untouched.
-- **Native** (for Codama programs). When the program depends on `codama` and uses at least one of its Rust derive macros (`CodamaAccount`, `CodamaInstructions`, `CodamaErrors`, `CodamaType`, …), written bare or qualified as `codama::CodamaAccount`, `pinoc` invokes Codama's own extractor and emits its IDL directly.
+- **Native** (for Codama programs). When the program depends on `codama` or `codama-macros` and uses at least one of the Rust derive macros (`CodamaAccount`, `CodamaInstructions`, `CodamaErrors`, `CodamaType`, …), written bare or qualified as `codama::CodamaAccount`, `pinoc` invokes Codama's own extractor and emits its IDL directly.
+
+### Which Codama crate to depend on
+
+Either `codama` or `codama-macros` in the program's manifest enables the native path. Both export the same derives. They differ in what they link:
+
+- **`codama-macros`** is a proc-macro crate: compiled for the host, never linked into the program. Adding it and its derives leaves the `.so` byte-identical. It is the one to use with `nostd_panic_handler!()`. Import the derives from `codama_macros`.
+- **`codama`** is a normal library that is not `#![no_std]`, so depending on it links `std` into the program. That fails under `nostd_panic_handler!()` with `E0152: found duplicate lang item panic_impl`, and builds under `default_panic_handler!()` or `entrypoint!`.
+
+The panic handler decides which one fits, and the two handlers are not interchangeable: `default_panic_handler!()` defines no handler of its own and relies on `std` being linked, so a program using it with only proc-macro dependencies fails with "`#[panic_handler]` function required, but not found". Choosing `default_panic_handler!()` is choosing to link `std`. The `--with-example` scaffold does this (it depends on `shank`, see [Shank and `no_std`](#shank-and-no_std)).
+
+Detection reads the manifest's `[dependencies]` and every `[target.'cfg(..)'.dependencies]` table, and matches a renamed dependency on its `package` (`macros = { package = "codama-macros", version = "0.9" }`). When a `Codama*` derive is present but neither crate is a dependency, `pinoc idl` takes the shim path and says so: `(Codama derives found, but neither `codama` nor `codama-macros` is a dependency)`.
+
+`pinoc` extracts with **codama 0.9.3**, parsing the `#[codama(..)]` attributes itself; the version of the macro crate the program depends on only decides what compiles. Pin `codama-macros`/`codama` to `0.9` to keep the two in step. A newer macro crate works as long as the program uses directives 0.9.3 has: a directive added later (`display`, `export`, `remaining_accounts` as of 0.13) stops the extraction with `unrecognized codama directive` instead of being ignored. When the program's resolved version is a different minor, `pinoc idl` says so. A rejected directive is reported with its name, file, line, and the source line.
+
+The pin is deliberate. codama 0.13 emits a newer IDL (spec 1.8, with empty lists omitted) that the Rust renderer `pinoc client generate --generator codama` uses does not read correctly: an instruction with no accounts renders as `Vec::with_capacity(NaN + ..)` and the client does not compile. Moving the extractor forward means moving that renderer too.
 
 You can tell the outputs apart: native carries a top-level `"kind": "rootNode"`; the shim carries `"metadata": {"origin": "shank", …}` instead.
 
@@ -34,6 +49,12 @@ pinoc idl --idl-generator codama   # force native extraction (errors if no Codam
 [idl]
 generator = "auto"   # "auto" | "shank" | "codama"
 ```
+
+## Shank and `no_std`
+
+`shank` has the same shape as `codama`: a normal library that re-exports the `shank_macro` proc-macro crate and is not `#![no_std]`. A program that uses a `Shank*` derive through `shank` links `std`, so it needs `default_panic_handler!()` or `entrypoint!`, and fails under `nostd_panic_handler!()` with `E0152: found duplicate lang item panic_impl`. (An unused `shank` dependency is not linked, so the error only appears once a derive is used.)
+
+To keep `std` out, depend on **`shank_macro`** directly and import the derives from it (`shank_macro::ShankAccount`). It is host-only, leaves the `.so` unchanged, and `pinoc idl` extracts the same IDL, since extraction reads the derive names from source and does not depend on which crate provides them.
 
 ## Program address
 

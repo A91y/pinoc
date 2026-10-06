@@ -21,24 +21,130 @@ const CODAMA_DERIVES: &[&str] = &[
     "CodamaType",
 ];
 
-/// True if `crate_root/Cargo.toml` depends on `codama` and at least one file
-/// under `src_dir` derives one of Codama's own macros. The dependency check
-/// gates the (more expensive) source walk, since most programs won't have it.
-pub fn codama_macros_detected(crate_root: &Path, src_dir: &Path) -> Result<bool> {
+/// The `codama` release pinoc's own extractor is built from.
+pub const BUNDLED_CODAMA: &str = "0.9.3";
+
+/// Either crate provides the derives. `codama-macros` is the one a program
+/// using `nostd_panic_handler!` can depend on, since the `codama` facade links `std`.
+const CODAMA_CRATES: &[&str] = &["codama", "codama-macros"];
+
+/// How a program uses Codama's derive macros.
+pub struct CodamaUsage {
+    /// The Codama crate the manifest depends on, if any.
+    pub dependency: Option<String>,
+    /// At least one source file derives a Codama macro.
+    pub derives: bool,
+}
+
+impl CodamaUsage {
+    pub fn detected(&self) -> bool {
+        self.dependency.is_some() && self.derives
+    }
+
+    /// Why Codama was not detected, for the messages that say so.
+    pub fn undetected_reason(&self) -> &'static str {
+        if self.derives && self.dependency.is_none() {
+            "Codama derives found, but neither `codama` nor `codama-macros` is a dependency"
+        } else {
+            "no Codama macros detected"
+        }
+    }
+}
+
+pub fn codama_usage(crate_root: &Path, src_dir: &Path) -> Result<CodamaUsage> {
     let cargo_toml = crate_root.join("Cargo.toml");
     let content = std::fs::read_to_string(&cargo_toml)
         .with_context(|| format!("Failed to read {}", cargo_toml.display()))?;
     let manifest: toml::Value = toml::from_str(&content)
         .with_context(|| format!("Failed to parse {}", cargo_toml.display()))?;
-    let has_codama_dep = manifest
-        .get("dependencies")
-        .and_then(|deps| deps.get("codama"))
-        .is_some();
-    if !has_codama_dep {
-        return Ok(false);
-    }
+    Ok(CodamaUsage {
+        dependency: codama_dependency(&manifest).map(|(name, _)| name),
+        derives: scan_for_codama_derives(src_dir)?,
+    })
+}
 
-    scan_for_codama_derives(src_dir)
+/// True if the program depends on `codama` or `codama-macros` and at least one
+/// file under `src_dir` derives one of Codama's macros.
+pub fn codama_macros_detected(crate_root: &Path, src_dir: &Path) -> Result<bool> {
+    Ok(codama_usage(crate_root, src_dir)?.detected())
+}
+
+/// The Codama crate in `[dependencies]` or any `[target.<cfg>.dependencies]`,
+/// with its declared version requirement. A renamed dependency is matched on
+/// its `package`.
+fn codama_dependency(manifest: &toml::Value) -> Option<(String, Option<String>)> {
+    let targets = manifest
+        .get("target")
+        .and_then(|t| t.as_table())
+        .into_iter()
+        .flat_map(|t| t.values());
+    std::iter::once(manifest)
+        .chain(targets)
+        .filter_map(|section| section.get("dependencies")?.as_table())
+        .flatten()
+        .find_map(|(key, spec)| {
+            let name = spec.get("package").and_then(|p| p.as_str()).unwrap_or(key);
+            if !CODAMA_CRATES.contains(&name) {
+                return None;
+            }
+            let version = spec.as_str().or_else(|| spec.get("version")?.as_str());
+            Some((name.to_string(), version.map(str::to_string)))
+        })
+}
+
+/// A note for a program whose Codama macros are from a different minor release
+/// than pinoc's extractor, or `None` when they match or the version is unknown.
+pub fn version_mismatch(crate_root: &Path) -> Option<String> {
+    let version = program_codama_version(crate_root)?;
+    (minor_of(&version)? != minor_of(BUNDLED_CODAMA)?).then(|| {
+        format!(
+            "this program uses codama-macros {version}, and pinoc extracts with codama {BUNDLED_CODAMA}. The `#[codama(..)]` directives differ between releases; one that {BUNDLED_CODAMA} does not recognise stops the extraction"
+        )
+    })
+}
+
+/// The `codama-macros` version the program resolves to: from the nearest
+/// `Cargo.lock` (the facade depends on the macros, so it is listed either
+/// way), else the requirement in the manifest.
+fn program_codama_version(crate_root: &Path) -> Option<String> {
+    let locked = crate_root.ancestors().take(4).find_map(|dir| {
+        let lock: toml::Value =
+            toml::from_str(&std::fs::read_to_string(dir.join("Cargo.lock")).ok()?).ok()?;
+        let versions: Vec<String> = lock
+            .get("package")?
+            .as_array()?
+            .iter()
+            .filter(|p| p.get("name").and_then(|n| n.as_str()) == Some("codama-macros"))
+            .filter_map(|p| Some(p.get("version")?.as_str()?.to_string()))
+            .collect();
+        // With several in the lock file, report one that differs.
+        versions
+            .iter()
+            .find(|v| minor_of(v) != minor_of(BUNDLED_CODAMA))
+            .or(versions.first())
+            .cloned()
+    });
+    locked.or_else(|| {
+        let manifest: toml::Value =
+            toml::from_str(&std::fs::read_to_string(crate_root.join("Cargo.toml")).ok()?).ok()?;
+        let requirement = codama_dependency(&manifest)?.1?;
+        Some(
+            requirement
+                .trim_start_matches(|c: char| !c.is_ascii_digit())
+                .to_string(),
+        )
+    })
+}
+
+/// `(major, minor)` of a version or requirement such as `0.13.2` or `0.9`.
+fn minor_of(version: &str) -> Option<(u64, u64)> {
+    let mut parts = version.split('.');
+    let major = parts.next()?.trim().parse().ok()?;
+    let minor = parts
+        .next()
+        .and_then(|m| m.trim().parse().ok())
+        .unwrap_or(0);
+    Some((major, minor))
 }
 
 fn scan_for_codama_derives(dir: &Path) -> Result<bool> {
@@ -101,11 +207,14 @@ fn item_has_codama_derive(item: &Item) -> bool {
 /// errors the shank path reports.
 pub fn extract_native_codama_idl(
     crate_root: &Path,
+    src_dir: &Path,
     resolved_address: Option<&str>,
     fallback_errors: &[Value],
     manual: Option<&ManualErrors>,
 ) -> Result<String> {
-    let json = codama::Codama::load(crate_root)?.get_json_idl()?;
+    let json = codama::Codama::load(crate_root)
+        .and_then(|codama| codama.get_json_idl())
+        .map_err(|e| extraction_error(e, crate_root, src_dir))?;
     let mut value: Value = serde_json::from_str(&json)?;
     if let Some(address) = resolved_address {
         value["program"]["publicKey"] = Value::String(address.to_string());
@@ -261,6 +370,98 @@ fn error_node(error: &Value) -> Value {
         "code": error["code"],
         "message": error["msg"].as_str().unwrap_or_default(),
     })
+}
+
+/// Codama reports a rejected attribute as a `syn::Error`, which has a span but
+/// no file, and prints it as its own source. Flattens it to one message per
+/// problem, each with the file and line the span points at.
+fn extraction_error(
+    error: codama::CodamaError,
+    crate_root: &Path,
+    src_dir: &Path,
+) -> anyhow::Error {
+    let codama::CodamaError::Compilation(syn_error) = error else {
+        return anyhow::anyhow!("{error}");
+    };
+    let mut files = Vec::new();
+    let _ = collect_sources(src_dir, &mut files);
+    for (path, _) in &mut files {
+        if let Ok(relative) = path.strip_prefix(crate_root) {
+            *path = relative.to_path_buf();
+        }
+    }
+    let problems: Vec<String> = syn_error
+        .into_iter()
+        .map(|e| {
+            let start = e.span().start();
+            let token = e.span().source_text().unwrap_or_default();
+            let token_note = if token.is_empty() {
+                String::new()
+            } else {
+                format!(" `{token}`")
+            };
+            // A span carries no file: find the sources that have this token at this position.
+            let matches: Vec<&(std::path::PathBuf, String)> = files
+                .iter()
+                .filter(|(_, src)| {
+                    !token.is_empty()
+                        && src
+                            .lines()
+                            .nth(start.line.saturating_sub(1))
+                            .and_then(|line| line.get(char_to_byte(line, start.column)..))
+                            .is_some_and(|rest| rest.starts_with(&token))
+                })
+                .collect();
+            match matches.as_slice() {
+                [(path, src)] => format!(
+                    "{e}{token_note}\n  --> {}:{}:{}\n   |  {}",
+                    path.display(),
+                    start.line,
+                    start.column + 1,
+                    src.lines().nth(start.line - 1).unwrap_or_default().trim()
+                ),
+                [] => format!(
+                    "{e}{token_note} (line {}, column {})",
+                    start.line,
+                    start.column + 1
+                ),
+                several => format!(
+                    "{e}{token_note} at line {}, column {} of one of: {}",
+                    start.line,
+                    start.column + 1,
+                    several
+                        .iter()
+                        .map(|(path, _)| path.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            }
+        })
+        .collect();
+    anyhow::anyhow!(problems.join("\n"))
+}
+
+/// Byte offset of the `column`-th character of `line` (spans count characters).
+fn char_to_byte(line: &str, column: usize) -> usize {
+    line.char_indices()
+        .nth(column)
+        .map(|(i, _)| i)
+        .unwrap_or(line.len())
+}
+
+fn collect_sources(dir: &Path, out: &mut Vec<(std::path::PathBuf, String)>) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_sources(&path, out)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            if let Ok(src) = std::fs::read_to_string(&path) {
+                out.push((path, src));
+            }
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(())
 }
 
 fn program_is_empty(root: &Value) -> bool {

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `pinoc idl` reports when the program's `codama-macros` is a different minor release than the codama 0.9.3 extractor built into pinoc (read from the program's `Cargo.lock`, else its manifest). If the extraction then fails, the error carries the same note, since a directive newer than 0.9.3 stops it with `unrecognized codama directive`.
+- A `#[codama(..)]` attribute the extractor rejects is reported with the directive's name, its file, line and column, and the source line. The message used to be a bare `unrecognized codama directive`, printed twice in the error chain.
+- `src/idl/README.md` says which Codama crate a program should depend on, which version, and why pinoc stays on codama 0.9.3. It also covers the same `std` linkage for `shank` (depend on `shank_macro` to avoid it) and that `default_panic_handler!()` requires `std` to be linked.
+
+### Fixed
+- Codama macros were only detected when the program depended on a crate named exactly `codama`. A program that calls `nostd_panic_handler!()` cannot depend on it (the facade links `std`) and uses `codama-macros`, so `pinoc idl` took the shank path and `pinoc client generate --generator codama` asked for `-y` on every run. Detection now accepts `codama` or `codama-macros`, under `[dependencies]` or any `[target.<cfg>.dependencies]`, including a renamed dependency (`package = "codama-macros"`).
+- When Codama derives are present but neither crate is a dependency, the messages say that, where they used to say no Codama macros were detected.
+
+### Changed
+- `shank_idl` 0.4.8 → 0.4.9.
+
 ## [0.3.0] - 2026-10-06
 
 ### Added

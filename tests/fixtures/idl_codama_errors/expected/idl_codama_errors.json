@@ -1,0 +1,21 @@
+{
+  "errors": [
+    {
+      "code": 0,
+      "msg": "Authority does not match the counter",
+      "name": "InvalidAuthority"
+    },
+    {
+      "code": 1,
+      "msg": "Counter would overflow",
+      "name": "CounterOverflow"
+    }
+  ],
+  "instructions": [],
+  "metadata": {
+    "address": "EfPyA5fx11YAY9XwmrWVddcQe5bBZeNsKA8avqYUH6Qr",
+    "origin": "shank"
+  },
+  "name": "idl_codama_errors",
+  "version": "0.1.0"
+}

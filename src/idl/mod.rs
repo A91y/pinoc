@@ -96,7 +96,7 @@ pub fn generate_idl(
             let reason = if forced {
                 "forced"
             } else {
-                "no Codama macros detected"
+                codama_native::codama_usage(&crate_root, src_dir)?.undetected_reason()
             };
             println!("📄 .codama.json: shank IDL + compatibility shim ({reason})");
             let codama_idl = codama::to_codama_compatible(&idl);
@@ -112,13 +112,21 @@ pub fn generate_idl(
             println!("🔷 .codama.json: native Codama extraction ({reason})");
             let rendered: serde_json::Value = serde_json::from_str(&idl_json)?;
             let fallback_errors = rendered["errors"].as_array().cloned().unwrap_or_default();
+            let mismatch = codama_native::version_mismatch(&crate_root);
+            if let Some(note) = &mismatch {
+                println!("ℹ️  Codama versions differ: {note}.");
+            }
             codama_native::extract_native_codama_idl(
                 &crate_root,
+                src_dir,
                 idl.metadata.address.as_deref(),
                 &fallback_errors,
                 manual.as_ref(),
             )
-            .with_context(|| "Failed to extract native Codama IDL")?
+            .with_context(|| match &mismatch {
+                Some(note) => format!("Failed to extract native Codama IDL. Note: {note}."),
+                None => "Failed to extract native Codama IDL".to_string(),
+            })?
         }
     };
 

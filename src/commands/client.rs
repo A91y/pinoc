@@ -90,7 +90,8 @@ pub fn generate_client(args: GenerateArgs) -> Result<()> {
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| crate_root.clone());
 
-    let detected_codama = codama_native::codama_macros_detected(&crate_root, &src_dir)?;
+    let codama_usage = codama_native::codama_usage(&crate_root, &src_dir)?;
+    let detected_codama = codama_usage.detected();
 
     if language == Language::Ts && generator == Some(Generator::Shank) {
         anyhow::bail!(
@@ -107,7 +108,7 @@ pub fn generate_client(args: GenerateArgs) -> Result<()> {
                 (Generator::Codama, false) | (Generator::Shank, true)
             );
             if contradicts && !yes {
-                confirm_contradicting_choice(g)?;
+                confirm_contradicting_choice(g, &codama_usage)?;
             }
             g
         }
@@ -215,8 +216,15 @@ fn resolve_out_dir(
 
 /// Bails with `-y` guidance when non-interactive; otherwise asks for explicit
 /// confirmation before generating with a choice that contradicts detection.
-fn confirm_contradicting_choice(chosen: Generator) -> Result<()> {
+fn confirm_contradicting_choice(
+    chosen: Generator,
+    codama_usage: &codama_native::CodamaUsage,
+) -> Result<()> {
     let (chosen_name, reason) = match chosen {
+        Generator::Codama if codama_usage.derives => (
+            "codama",
+            "Codama derives were found, but neither `codama` nor `codama-macros` is a dependency of this program",
+        ),
         Generator::Codama => ("codama", "no Codama macros were detected in this program"),
         Generator::Shank => ("shank", "Codama macros were detected in this program"),
     };

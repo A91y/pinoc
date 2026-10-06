@@ -1,0 +1,67 @@
+{
+  "additionalPrograms": [],
+  "kind": "rootNode",
+  "program": {
+    "accounts": [
+      {
+        "data": {
+          "fields": [
+            {
+              "kind": "structFieldTypeNode",
+              "name": "authority",
+              "type": {
+                "count": {
+                  "kind": "fixedCountNode",
+                  "value": 32
+                },
+                "item": {
+                  "endian": "le",
+                  "format": "u8",
+                  "kind": "numberTypeNode"
+                },
+                "kind": "arrayTypeNode"
+              }
+            },
+            {
+              "kind": "structFieldTypeNode",
+              "name": "count",
+              "type": {
+                "endian": "le",
+                "format": "u64",
+                "kind": "numberTypeNode"
+              }
+            }
+          ],
+          "kind": "structTypeNode"
+        },
+        "kind": "accountNode",
+        "name": "counter"
+      }
+    ],
+    "constants": [],
+    "definedTypes": [],
+    "errors": [
+      {
+        "code": 0,
+        "kind": "errorNode",
+        "message": "Authority does not match the counter",
+        "name": "invalidAuthority"
+      },
+      {
+        "code": 1,
+        "kind": "errorNode",
+        "message": "Counter would overflow",
+        "name": "counterOverflow"
+      }
+    ],
+    "events": [],
+    "instructions": [],
+    "kind": "programNode",
+    "name": "idlCodamaErrors",
+    "pdas": [],
+    "publicKey": "EfPyA5fx11YAY9XwmrWVddcQe5bBZeNsKA8avqYUH6Qr",
+    "version": "0.1.0"
+  },
+  "standard": "codama",
+  "version": "1.6.0"
+}
