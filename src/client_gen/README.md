@@ -52,9 +52,26 @@ shank_out_dir = "clients/shank"   # per-generator, wins over the shared out_dir
 codama_out_dir = "clients/codama"
 ```
 
-## Codama dependency isolation
+## Codama dependencies
 
-Codama's npm dependencies live in a project-local `<out-dir>/.pinoc-codama/`, isolated from the rest of the project. If they are not installed, `pinoc` stops before writing anything (no directory, no `.gitignore` change) and prints the exact `npm install` command rather than installing without consent; pass `--auto-install` to proceed. Rust and TypeScript use different renderer packages, so each language installs its own on first use. `.pinoc-codama/` is added to `.gitignore` automatically when the project is a git repo. Each output directory has its own `.pinoc-codama/` and the two languages use different renderer packages, so generating both a Rust and a TypeScript client installs two `node_modules` trees (about 35 MB each). If Node.js is missing entirely, `pinoc` prints an install pointer.
+Codama's npm dependencies live in a project-local `<out-dir>/.pinoc-codama/`, isolated from the rest of the project. `pinoc` installs them only with consent: without `--auto-install` it stops before writing anything (no directory, no `.gitignore` change) and says so. `.pinoc-codama/` is added to `.gitignore` automatically when the project is a git repo. If Node.js is missing entirely, `pinoc` prints an install pointer.
+
+**The versions are fixed by pinoc, not by npm.** Each pinoc release names exact versions of the packages it drives and carries a lock file for their whole dependency tree, and installs with `npm ci`, which installs exactly that tree or fails. The same pinoc therefore installs the same packages on any machine and any day, and a renderer upgrade is a pinoc change:
+
+| | Rust client | TypeScript client |
+|---|---|---|
+| `codama` | 1.11.0 | 1.11.0 |
+| `@codama/nodes-from-anchor` | 1.5.6 | 1.5.6 |
+| renderer | `@codama/renderers-rust` 1.2.10 | `@codama/renderers-js` 2.5.0 |
+
+Every run prints the three versions it rendered with, and checks the installed tree before using it:
+
+- **It came from this pinoc's lock.** `pinoc` records the lock an install came from (`.pinoc-codama/installed-lock.json`). A tree installed by another pinoc version, or by a hand-run `npm install`, is not used. Upgrading pinoc across a lock change therefore needs `--auto-install` once.
+- **It has not changed since.** `npm ci` verifies the lock's integrity hashes only while installing, so `pinoc` also records a fingerprint of every file it installed (`.pinoc-codama/installed-tree`) and compares it on each run. An edited, added or removed file, or a cache that restored a different tree, is refused. This notices a change; it is not a defence against someone who rewrites the fingerprint too.
+
+Either way the command stops before rendering and asks for `--auto-install`, which reinstalls. A hand-run `npm ci` inside `.pinoc-codama/` restores the same tree and is accepted.
+
+Each output directory has its own `.pinoc-codama/` and the two languages use different renderer packages, so generating both a Rust and a TypeScript client installs two `node_modules` trees (about 35 MB each).
 
 ## Program-derived addresses
 
@@ -65,7 +82,7 @@ When the IDL declares PDAs, the codama Rust client gets `find_program_address` h
 An enum whose variants carry values that are not their positions (`Open = 1, Active = 2, Closed = 5`) is generated with those values by every generator. This needs saying because none of the renderers does it on its own: borsh and `@solana/kit` encode an enum by variant position, and `@codama/renderers-js` and `@codama/renderers-rust` drop the discriminators the IDL carries, so the client would write and read the wrong byte with no error (upstream: [renderers-js#6](https://github.com/codama-idl/renderers-js/issues/6)).
 
 - **`shank`** reads the values from the program source, since the shank IDL does not record them, and emits `Open = 1` with `#[borsh(use_discriminant = true)]`.
-- **`codama`** rewrites the rendered enum after the renderer runs: explicit values, plus `#[borsh(use_discriminant = true)]` in Rust or `{ useValuesAsDiscriminators: true }` on the codecs in TypeScript. If the rendered code is not what the rewrite expects, the command fails and says the client must not be used. Output from a renderer that already emits the right values is accepted as it is.
+- **`codama`** rewrites the rendered enum after the renderer runs: explicit values, plus `#[borsh(use_discriminant = true)]` in Rust or `{ useValuesAsDiscriminators: true }` on the codecs in TypeScript. If the rendered code is not what the rewrite expects, the command fails and says the client must not be used; since the renderer versions are fixed by pinoc, that can only follow a pinoc upgrade. Output from a renderer that already emits the right values is accepted as it is.
 
 `pinoc client generate` prints which enums this applied to. Two shapes are refused, because they cannot be corrected: explicit non-positional discriminators on an enum whose variants carry data, and on an enum declared inline instead of as its own type. An enum numbered `0..n` is generated exactly as before.
 

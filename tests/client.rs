@@ -354,3 +354,93 @@ fn codama_clients_for_a_program_with_pdas_and_constants() {
     let manifest = std::fs::read_to_string(dir.join("clients/rust-codama/Cargo.toml")).unwrap();
     assert!(manifest.contains("solana-pubkey = \"4.2\"\n"), "{manifest}");
 }
+
+/// Needs Node.js and network access: `cargo test -- --ignored`.
+#[test]
+#[ignore]
+fn codama_tooling_is_installed_from_the_built_in_lock() {
+    let dir = project_with_idl();
+    let tooling = dir.join("clients/ts/.pinoc-codama");
+    let generate = |args: &[&str]| {
+        let mut all = vec!["client", "generate", "--language", "ts"];
+        all.extend(args);
+        pinoc(&dir, &all)
+    };
+
+    let out = generate(&["--auto-install"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let versions = "📦 @codama/nodes-from-anchor 1.5.6, @codama/renderers-js 2.5.0, codama 1.11.0";
+    assert!(stdout(&out).contains(versions), "{}", stdout(&out));
+    let lock = std::fs::read_to_string(tooling.join("package-lock.json")).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(tooling.join("installed-lock.json")).unwrap(),
+        lock
+    );
+    let manifest = std::fs::read_to_string(tooling.join("package.json")).unwrap();
+    assert!(
+        !manifest.contains('^') && !manifest.contains('~'),
+        "{manifest}"
+    );
+
+    // Installed once, later runs need no flag and report the same versions.
+    let out = generate(&[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains(versions));
+    let client = std::fs::read_to_string(dir.join("clients/ts/src/generated/index.ts")).unwrap();
+
+    // A hand-run `npm ci` restores the same tree, so it stays accepted.
+    let ci = Command::new("npm")
+        .args(["ci", "--silent"])
+        .current_dir(&tooling)
+        .output()
+        .unwrap();
+    assert!(ci.status.success());
+    assert!(generate(&[]).status.success());
+
+    // A tree that did not come from this lock, or was changed since, is not used.
+    const FOREIGN: &str = "were not installed from this pinoc's lock file";
+    const CHANGED: &str = "were changed after pinoc installed them";
+    for (tamper, from, to, expected) in [
+        ("installed-lock.json", "2.5.0", "2.6.0", FOREIGN),
+        (
+            "node_modules/@codama/renderers-js/package.json",
+            "\"version\": \"2.5.0\"",
+            "\"version\": \"2.6.0\"",
+            FOREIGN,
+        ),
+        // The renderer's code edited, every version string left alone.
+        (
+            "node_modules/@codama/renderers-js/dist/index.node.mjs",
+            "getEnumEncoder",
+            "getEnumEncoder /* edited */",
+            CHANGED,
+        ),
+        ("installed-tree", "fnv1a64", "fnv1a64 0", CHANGED),
+    ] {
+        let path = tooling.join(tamper);
+        let original = std::fs::read_to_string(&path).unwrap();
+        let edited = original.replace(from, to);
+        assert_ne!(edited, original, "{tamper}");
+        std::fs::write(&path, edited).unwrap();
+        let refused = generate(&[]);
+        assert!(!refused.status.success(), "{tamper}");
+        assert!(
+            stderr(&refused).contains(expected),
+            "{tamper}: {}",
+            stderr(&refused)
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("clients/ts/src/generated/index.ts")).unwrap(),
+            client,
+            "{tamper}: a refused run must not touch the client"
+        );
+        let out = generate(&["--auto-install"]);
+        assert!(out.status.success(), "{tamper}: {}", stderr(&out));
+        assert!(stdout(&out).contains(versions), "{tamper}");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("clients/ts/src/generated/index.ts")).unwrap(),
+            client,
+            "{tamper}"
+        );
+    }
+}

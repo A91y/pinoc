@@ -1,0 +1,10 @@
+{
+  "name": "pinoc-codama-tooling",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "codama": "1.11.0",
+    "@codama/nodes-from-anchor": "1.5.6",
+    "@codama/renderers-rust": "1.2.10"
+  }
+}

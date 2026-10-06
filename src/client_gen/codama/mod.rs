@@ -9,17 +9,52 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-const RUST_PACKAGES: &[(&str, &str)] = &[
-    ("codama", "^1.5.0"),
-    ("@codama/nodes-from-anchor", "^1.3.8"),
-    ("@codama/renderers-rust", "^1.2.9"),
-];
+/// The npm packages each renderer needs, at exact versions, and the lock file
+/// for their whole dependency tree. A pinoc release therefore installs one
+/// fixed set of packages, and a renderer upgrade is a change to pinoc: the enum
+/// rewrite in `discriminants` depends on the renderers' exact output.
+struct Tooling {
+    package_json: &'static str,
+    package_lock: &'static str,
+}
 
-const TS_PACKAGES: &[(&str, &str)] = &[
-    ("codama", "^1.5.0"),
-    ("@codama/nodes-from-anchor", "^1.3.8"),
-    ("@codama/renderers-js", "^2.5.0"),
-];
+const RUST_TOOLING: Tooling = Tooling {
+    package_json: include_str!("npm/rust/package.json"),
+    package_lock: include_str!("npm/rust/package-lock.json"),
+};
+
+const TS_TOOLING: Tooling = Tooling {
+    package_json: include_str!("npm/ts/package.json"),
+    package_lock: include_str!("npm/ts/package-lock.json"),
+};
+
+/// A copy of the lock file, written after `npm ci` succeeds. It records which
+/// lock the installed `node_modules` came from.
+const INSTALLED_LOCK: &str = "installed-lock.json";
+
+/// A fingerprint of the installed `node_modules` contents, written with it.
+/// `npm ci` checks the lock's integrity hashes only while installing; this is
+/// what notices a tree changed afterwards (a restored cache, an edited file).
+const INSTALLED_TREE: &str = "installed-tree";
+
+impl Tooling {
+    /// `(name, version)` of the packages named in `package.json`.
+    fn packages(&self) -> Vec<(String, String)> {
+        let manifest: serde_json::Value =
+            serde_json::from_str(self.package_json).expect("embedded package.json is valid");
+        manifest["dependencies"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .map(|(name, version)| {
+                (
+                    name.clone(),
+                    version.as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    }
+}
 
 const RUST_SCRIPT: &str = r#"import { rootNodeFromAnchor } from '@codama/nodes-from-anchor';
 import { createFromRoot } from 'codama';
@@ -65,17 +100,6 @@ await codama.accept(
 console.log('pinoc-codama: render complete');
 "#;
 
-fn package_json(packages: &[(&str, &str)]) -> String {
-    let deps = packages
-        .iter()
-        .map(|(name, range)| format!("    \"{name}\": \"{range}\""))
-        .collect::<Vec<_>>()
-        .join(",\n");
-    format!(
-        "{{\n  \"name\": \"pinoc-codama-tooling\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"dependencies\": {{\n{deps}\n  }}\n}}\n"
-    )
-}
-
 /// Requires Node.js/npm.
 pub fn generate_via_codama(
     idl_path: &Path,
@@ -86,54 +110,74 @@ pub fn generate_via_codama(
 ) -> Result<()> {
     check_node_available()?;
 
-    let (packages, script) = match language {
-        Language::Rust => (RUST_PACKAGES, RUST_SCRIPT),
-        Language::Ts => (TS_PACKAGES, TS_SCRIPT),
+    let (tooling, script) = match language {
+        Language::Rust => (&RUST_TOOLING, RUST_SCRIPT),
+        Language::Ts => (&TS_TOOLING, TS_SCRIPT),
     };
     let tooling_dir = out_dir.join(".pinoc-codama");
     let node_modules = tooling_dir.join("node_modules");
-    let needs_install = packages
-        .iter()
-        .any(|(name, _)| !node_modules.join(name).exists());
+    let installed_lock = fs::read_to_string(tooling_dir.join(INSTALLED_LOCK)).ok();
+    let from_this_lock = installed_lock.as_deref() == Some(tooling.package_lock)
+        && installed_versions(tooling, &node_modules).is_ok();
+    let unmodified = from_this_lock
+        && fs::read_to_string(tooling_dir.join(INSTALLED_TREE)).ok()
+            == tree_fingerprint(&node_modules).ok();
+    let needs_install = !unmodified;
 
     // Decided before anything is written, so a refused run leaves the tree untouched.
     if needs_install && !auto_install {
-        let specs = packages
-            .iter()
-            .map(|(name, range)| format!("'{name}@{range}'"))
-            .collect::<Vec<_>>()
-            .join(" ");
         let flag = match language {
             Language::Rust => "",
             Language::Ts => " --language ts",
         };
+        let state = if from_this_lock {
+            "codama's npm dependencies were changed after pinoc installed them (a file in node_modules was edited, added or removed, or a cache restored a different tree)."
+        } else if node_modules.exists() {
+            "codama's npm dependencies were not installed from this pinoc's lock file (another pinoc version installed them, or they were installed by hand)."
+        } else {
+            "codama's npm dependencies aren't installed yet."
+        };
         anyhow::bail!(
-            "codama's npm dependencies aren't installed yet.\n\n\
-             Install them with:\n  npm install --prefix {} {specs}\n\n\
-             Or rerun with: pinoc client generate --generator codama{flag} --auto-install",
+            "{state}\n\n\
+             Rerun with: pinoc client generate --generator codama{flag} --auto-install\n\n\
+             That runs `npm ci` in {} with the exact package versions and lock file built into pinoc.",
             tooling_dir.display()
         );
     }
 
     fs::create_dir_all(&tooling_dir)
         .with_context(|| format!("Failed to create {}", tooling_dir.display()))?;
-    fs::write(tooling_dir.join("package.json"), package_json(packages))
-        .with_context(|| "Failed to write package.json")?;
     ensure_gitignored(".pinoc-codama/")?;
     let script_path = tooling_dir.join("convert_and_render.mjs");
     fs::write(&script_path, script).with_context(|| "Failed to write conversion script")?;
 
     if needs_install {
-        println!("📦 Installing codama (first run only)...");
+        println!("📦 Installing codama's npm dependencies (npm ci)...");
+        // Removed first, so an interrupted install is not mistaken for a finished one.
+        let _ = fs::remove_file(tooling_dir.join(INSTALLED_LOCK));
+        let _ = fs::remove_file(tooling_dir.join(INSTALLED_TREE));
+        fs::write(tooling_dir.join("package.json"), tooling.package_json)
+            .with_context(|| "Failed to write package.json")?;
+        fs::write(tooling_dir.join("package-lock.json"), tooling.package_lock)
+            .with_context(|| "Failed to write package-lock.json")?;
+        // `npm ci` installs exactly what the lock file names, or fails.
         let status = Command::new("npm")
-            .arg("install")
+            .arg("ci")
             .current_dir(&tooling_dir)
             .status()
-            .with_context(|| "Failed to run 'npm install'")?;
+            .with_context(|| "Failed to run 'npm ci'")?;
         if !status.success() {
-            anyhow::bail!("'npm install' failed with exit code: {:?}", status.code());
+            anyhow::bail!("'npm ci' failed with exit code: {:?}", status.code());
         }
+        fs::write(
+            tooling_dir.join(INSTALLED_TREE),
+            tree_fingerprint(&node_modules)?,
+        )
+        .with_context(|| format!("Failed to write {INSTALLED_TREE}"))?;
+        fs::write(tooling_dir.join(INSTALLED_LOCK), tooling.package_lock)
+            .with_context(|| format!("Failed to write {INSTALLED_LOCK}"))?;
     }
+    println!("📦 {}", installed_versions(tooling, &node_modules)?);
 
     let src_dir = out_dir.join("src");
     fs::create_dir_all(&src_dir)?;
@@ -186,6 +230,68 @@ pub fn generate_via_codama(
         }
     }
     Ok(())
+}
+
+/// A fingerprint of every file under `dir`: its relative path and contents, or
+/// link target, in sorted order. FNV-1a, which is enough to notice a change; it
+/// is not a defence against someone who can also rewrite the recorded value.
+fn tree_fingerprint(dir: &Path) -> Result<String> {
+    fn walk(dir: &Path, root: &Path, out: &mut Vec<std::path::PathBuf>) -> Result<()> {
+        for entry in fs::read_dir(dir)? {
+            let path = entry?.path();
+            if path.is_dir() && !path.is_symlink() {
+                walk(&path, root, out)?;
+            } else {
+                out.push(path.strip_prefix(root).unwrap_or(&path).to_path_buf());
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    walk(dir, dir, &mut files)?;
+    files.sort();
+
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut feed = |bytes: &[u8]| {
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    for relative in &files {
+        let path = dir.join(relative);
+        feed(relative.to_string_lossy().as_bytes());
+        feed(&[0]);
+        if path.is_symlink() {
+            feed(fs::read_link(&path)?.to_string_lossy().as_bytes());
+        } else {
+            feed(&fs::read(&path)?);
+        }
+        feed(&[0]);
+    }
+    Ok(format!("{} files, fnv1a64 {hash:016x}\n", files.len()))
+}
+
+/// The installed version of each package pinoc asked for. Errors if one is not
+/// the pinned version, which the lock file should make impossible.
+fn installed_versions(tooling: &Tooling, node_modules: &Path) -> Result<String> {
+    let mut found = Vec::new();
+    for (name, pinned) in tooling.packages() {
+        let manifest = node_modules.join(&name).join("package.json");
+        let installed: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(&manifest)
+                .with_context(|| format!("Failed to read {}", manifest.display()))?,
+        )?;
+        let version = installed["version"].as_str().unwrap_or_default();
+        if version != pinned {
+            anyhow::bail!(
+                "{name} {version} is installed in {}, but this pinoc renders with {pinned}",
+                node_modules.display()
+            );
+        }
+        found.push(format!("{name} {version}"));
+    }
+    Ok(found.join(", "))
 }
 
 /// Appends `pattern` to the project root's `.gitignore` if present, or creates
@@ -316,4 +422,51 @@ num-derive = "0.4"
 num-traits = "0.2"
 "#
     .replace("SOLANA_PUBKEY", solana_pubkey)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn is_exact(version: &str) -> bool {
+        let parts: Vec<&str> = version.split('.').collect();
+        parts.len() == 3
+            && parts
+                .iter()
+                .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+    }
+
+    #[test]
+    fn npm_packages_are_pinned_and_locked() {
+        for tooling in [&RUST_TOOLING, &TS_TOOLING] {
+            let lock: serde_json::Value = serde_json::from_str(tooling.package_lock).unwrap();
+            let packages = tooling.packages();
+            assert_eq!(packages.len(), 3);
+            for (name, version) in packages {
+                assert!(
+                    is_exact(&version),
+                    "{name} is not pinned exactly: {version}"
+                );
+                // The lock file agrees with the manifest, as `npm ci` requires.
+                assert_eq!(
+                    lock["packages"][""]["dependencies"][&name], version,
+                    "{name}"
+                );
+                assert_eq!(
+                    lock["packages"][format!("node_modules/{name}")]["version"],
+                    version,
+                    "{name}"
+                );
+            }
+            // Every package in the tree is fixed by an integrity hash.
+            for (path, entry) in lock["packages"].as_object().unwrap() {
+                if !path.is_empty() {
+                    assert!(
+                        entry["integrity"].is_string(),
+                        "{path} has no integrity hash"
+                    );
+                }
+            }
+        }
+    }
 }
