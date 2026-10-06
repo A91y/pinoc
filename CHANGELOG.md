@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-07
+
 ### Added
 - Program constants in the IDL. A `const` with a `// pinoc:constant` comment directly above it is exported to `constants` in `<name>.json` and to `program.constants` in `<name>.codama.json`, since neither extractor can declare one from source. The value is evaluated from the const's own expression (integer literals, `+ - * / <<`, casts, other consts); the type is the declared integer type, or the one named in the marker (`// pinoc:constant(u8)`) for a `usize`. Doc comments are carried over. A marker that cannot be honoured stops `pinoc idl` with the reason. The TypeScript client renders them as `export const`s.
 
