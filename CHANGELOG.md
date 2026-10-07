@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-08
+
 ### Added
 - `pinoc build --arch <v0|v1|v2|v3|v4>` and `pinoc test --arch <..>` pass the SBPF version to `cargo build-sbf`, and `[build] arch` in `Pinoc.toml` sets it for both commands. There was no way to build anything but the toolchain's default (`v0` in cargo-build-sbf 4.3) through pinoc. With neither set, pinoc passes no `--arch`, as before.
 - `pinoc deploy` checks the artifact's SBPF version against the cluster before uploading. It refuses a v0, v1 or v2 artifact where SIMD-0500 is active (every `solana-test-validator` 4.3) and a v3 artifact where SBPFv3 is not enabled, and names the `--arch` to rebuild with. The loader reports both as `Detected sbpf_version required by the executable which are not enabled`, after the buffer is written. If the cluster's feature status cannot be read, the deploy goes ahead unchecked.
