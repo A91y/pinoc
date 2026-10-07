@@ -183,3 +183,143 @@ fn accounts_are_followed_from_try_from_into_process_and_helpers() {
         evidence(4)
     );
 }
+
+#[test]
+fn instructions_sharing_an_account_list_are_checked_separately() {
+    let found = findings("check_shared_accounts", &[]);
+    assert_eq!(
+        located(&found),
+        [
+            // `process_pairs` takes its accounts in chunks.
+            ("UNTRACKED-ACCOUNTS", "src", 0),
+            // Named in a `match` arm, and leaving a `match` through a `let`.
+            ("ACC001-P", "src/batch.rs", 6),
+            ("ACC001-P", "src/batch.rs", 27),
+            // Read by `Unwind` through a method of `Sell`, whose own `check`
+            // `Unwind` never calls.
+            ("ACC001-P", "src/sell.rs", 63),
+            // A `for` loop over the slice, and `.last()`.
+            ("ACC001-P", "src/tail.rs", 24),
+            ("ACC001-P", "src/tail.rs", 33),
+            ("ACC002-P", "src/unwind.rs", 25),
+        ]
+    );
+    // `Sell` loads the same accounts by splitting the slice and is silent, as
+    // is `expect_closed`, which takes each account with `.get(at).ok_or(..)?`.
+
+    let evidence = |index: usize| found[index]["evidence"].as_str().unwrap();
+    assert!(
+        evidence(0).contains("`process_pairs` (binds no account from its slice)"),
+        "{}",
+        evidence(0)
+    );
+    assert!(evidence(2).contains("account `oracle`"), "{}", evidence(2));
+    assert!(
+        evidence(3).contains(
+            "(in `Sell::pool_reserve`, as part of `Unwind`, bound in `SellAccounts::load`)"
+        ),
+        "{}",
+        evidence(3)
+    );
+    assert!(evidence(6).contains("account `admin`"), "{}", evidence(6));
+}
+
+#[test]
+fn a_project_can_name_its_own_authorities() {
+    let dir = common::temp_copy("check_shared_accounts");
+    std::fs::write(
+        dir.join("Pinoc.toml"),
+        "[provider]\ncluster = \"localhost\"\nwallet = \"~/.config/solana/id.json\"\n\n[check]\nauthority_names = [\"keeper\"]\n",
+    )
+    .unwrap();
+    let out = pinoc(&dir, &["check", "--json"]);
+    let found = sorted(serde_json::from_str(&stdout(&out)).unwrap());
+    let signer: Vec<(&str, u64)> = found
+        .iter()
+        .filter(|f| f["code"] == "ACC002-P")
+        .map(|f| {
+            (
+                f["span"]["file"].as_str().unwrap(),
+                f["span"]["line"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    // `keeper` joins `admin`; `Sell`, which requires both signatures, stays silent.
+    assert_eq!(signer, [("src/unwind.rs", 25), ("src/unwind.rs", 26)]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_misspelt_check_key_or_section_is_refused() {
+    let provider = "[provider]\ncluster = \"localhost\"\nwallet = \"~/.config/solana/id.json\"\n\n";
+    for (config, named) in [
+        (
+            "[check]\nautority_names = [\"keeper\"]\n",
+            "unknown field `autority_names`",
+        ),
+        (
+            "[chek]\nauthority_names = [\"keeper\"]\n",
+            "unknown field `chek`",
+        ),
+    ] {
+        let dir = common::temp_copy("check_shared_accounts");
+        std::fs::write(dir.join("Pinoc.toml"), format!("{provider}{config}")).unwrap();
+        let out = pinoc(&dir, &["check"]);
+        assert!(!out.status.success(), "{config}");
+        let text = common::stderr(&out);
+        assert!(text.contains(named), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[test]
+fn a_check_value_that_cannot_be_applied_is_refused() {
+    let provider = "[provider]\ncluster = \"localhost\"\nwallet = \"~/.config/solana/id.json\"\n\n";
+    for (config, named) in [
+        (
+            "[check]\nconfidence_threshold = \"possible\"\n",
+            "`confidence_threshold = \"possible\"` under `[check]` in Pinoc.toml is not a confidence level",
+        ),
+        (
+            "[check]\nallow = [\"ACC001\"]\n",
+            "`ACC001`, given to `allow` under `[check]` in Pinoc.toml, is not a lint code",
+        ),
+    ] {
+        let dir = common::temp_copy("check_shared_accounts");
+        std::fs::write(dir.join("Pinoc.toml"), format!("{provider}{config}")).unwrap();
+        let out = pinoc(&dir, &["check"]);
+        assert!(!out.status.success(), "{config}");
+        let text = common::stderr(&out);
+        assert!(text.contains(named), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    let out = pinoc(
+        &fixture("check_shared_accounts"),
+        &["check", "--deny", "ACC9"],
+    );
+    assert!(!out.status.success());
+    let text = common::stderr(&out);
+    assert!(
+        text.contains("`ACC9`, given to `--deny`, is not a lint code"),
+        "{text}"
+    );
+}
+
+#[test]
+fn the_hidden_findings_line_names_their_codes() {
+    let dir = common::temp_copy("check_shared_accounts");
+    std::fs::write(
+        dir.join("Pinoc.toml"),
+        "[provider]\ncluster = \"localhost\"\nwallet = \"~/.config/solana/id.json\"\n\n[check]\nconfidence_threshold = \"definite\"\n",
+    )
+    .unwrap();
+    let text = stdout(&pinoc(&dir, &["check"]));
+    assert!(
+        text.contains(
+            "lower-confidence findings (ACC001-P, ACC002-P, ACC003-P) below the `definite` threshold hidden"
+        ),
+        "{text}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

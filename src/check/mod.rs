@@ -30,6 +30,7 @@ pub(crate) struct EffectiveConfig {
     pub cli_deny: Vec<String>,
     pub cli_allow: Vec<String>,
     pub threshold: Confidence,
+    pub authority_names: Vec<String>,
 }
 
 /// Effective disposition of one lint code.
@@ -89,8 +90,19 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
     }
 
     // The account and CPI lints run on fact tables built over the whole crate.
-    let handlers = facts::analyze(&parsed);
-    let mut by_lint: Vec<Vec<Finding>> = lints.iter().map(|l| l.run_handlers(&handlers)).collect();
+    let handlers = facts::analyze(&parsed, &cfg.authority_names);
+    // Instructions that share an accounts type are analysed separately, and
+    // report the same finding once.
+    let mut by_lint: Vec<Vec<Finding>> = lints
+        .iter()
+        .map(|l| {
+            let mut seen = std::collections::HashSet::new();
+            l.run_handlers(&handlers)
+                .into_iter()
+                .filter(|f| seen.insert((f.span.file.clone(), f.span.line, f.span.col)))
+                .collect()
+        })
+        .collect();
 
     // Findings are emitted file by file, each lint in turn within a file.
     let mut raw = Vec::new();
@@ -106,12 +118,38 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
         }
     }
 
-    // A handler whose stored accounts nothing reaches is not followed.
-    let mut storing: Vec<(String, Span)> = handlers
-        .iter()
-        .filter(|h| h.followed_by.is_empty())
-        .filter_map(|h| Some((h.name.clone(), h.stores_accounts.as_ref()?.to_span())))
-        .collect();
+    // Handlers with accounts that were not analysed: none could be bound from
+    // the slice, or they were stored in a type that nothing reads them back from.
+    let mut storing: Vec<(String, Span)> = Vec::new();
+    let mut listed = std::collections::HashSet::new();
+    for h in &handlers {
+        let entry = if h.unbound_accounts {
+            let span = Span {
+                file: h.file.clone(),
+                line: 0,
+                col: 0,
+            };
+            Some((
+                format!("`{}` (binds no account from its slice)", h.name),
+                span,
+            ))
+        } else {
+            h.stores_accounts
+                .as_ref()
+                .filter(|_| h.followed_by.is_empty())
+                .map(|site| {
+                    (
+                        format!("`{}` (stores them where nothing reads them back)", h.name),
+                        site.to_span(),
+                    )
+                })
+        };
+        if let Some(entry) = entry {
+            if listed.insert((h.file.clone(), h.name.clone())) {
+                storing.push(entry);
+            }
+        }
+    }
     storing.sort_by(|a, b| (&a.1.file, a.1.line).cmp(&(&b.1.file, b.1.line)));
     raw.extend(coverage_findings(
         src_dir.exists(),
@@ -126,7 +164,7 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
     } else {
         output::render_human(
             &processed.findings,
-            processed.below_threshold,
+            &processed.below_threshold,
             cfg.threshold,
         );
     }
@@ -175,7 +213,7 @@ fn coverage_findings(
         let mut names = storing
             .iter()
             .take(SHOWN)
-            .map(|(name, _)| format!("`{name}`"))
+            .map(|(name, _)| name.clone())
             .collect::<Vec<_>>()
             .join(", ");
         if storing.len() > SHOWN {
@@ -193,7 +231,7 @@ fn coverage_findings(
                 col: 0,
             },
             evidence: format!(
-                "{} handler(s) store their accounts in a struct that no analysed function reads them back from ({names}). Checks inside those handlers are analysed, but uses of the stored accounts elsewhere are not followed, so a missing check there is not reported",
+                "{} handler(s) have accounts that were not analysed: {names}. Checks and uses pinoc could not attach to an account are not reported, so this is not a clean result for them",
                 storing.len()
             ),
             fix: Some(
@@ -209,8 +247,9 @@ fn coverage_findings(
 pub(crate) struct Processed {
     pub findings: Vec<Finding>,
     pub exit_code: i32,
-    /// Findings dropped only because their confidence is below the threshold.
-    pub below_threshold: usize,
+    /// The code of each finding dropped only because its confidence is below
+    /// the threshold.
+    pub below_threshold: Vec<&'static str>,
 }
 
 /// Applies config severity, inline suppression, and the confidence threshold to
@@ -223,7 +262,7 @@ pub(crate) fn process_findings(
     supp: &mut Suppressions,
 ) -> Processed {
     let mut out = Vec::new();
-    let mut below_threshold = 0;
+    let mut below_threshold = Vec::new();
     for mut f in raw {
         let denied = match resolve(cfg, f.code) {
             Disposition::Allow => continue,
@@ -242,7 +281,7 @@ pub(crate) fn process_findings(
         }
         // A weak finding survives the threshold only when explicitly denied.
         if f.confidence < cfg.threshold && !denied {
-            below_threshold += 1;
+            below_threshold.push(f.code);
             continue;
         }
         out.push(f);
@@ -282,7 +321,8 @@ fn load_effective_config(opts: &CheckOptions) -> Result<EffectiveConfig> {
         allow: check.allow,
         cli_deny: opts.deny.clone(),
         cli_allow: opts.allow.clone(),
-        threshold: parse_confidence(check.confidence_threshold.as_deref()),
+        threshold: parse_confidence(check.confidence_threshold.as_deref())?,
+        authority_names: check.authority_names,
     })
 }
 
@@ -299,29 +339,38 @@ fn is_wildcard(code: &str) -> bool {
 /// `*`/`all`. This blocks typos and a bare `--deny *` (which the shell expands
 /// into filenames before pinoc runs) with one clear error.
 fn reject_unknown_codes(cfg: &EffectiveConfig, known: &[&'static str]) -> Result<()> {
-    let has_unknown = [
-        &cfg.deny,
-        &cfg.warn,
-        &cfg.allow,
-        &cfg.cli_deny,
-        &cfg.cli_allow,
-    ]
-    .into_iter()
-    .flatten()
-    .any(|c| !is_wildcard(c) && !known.contains(&c.as_str()));
-    if has_unknown {
-        anyhow::bail!(
-            "a --deny/--allow value is not a lint code. Pass a real code (e.g. `ACC001-P`), or `all`/`'*'` for every code (quote `*` so the shell does not expand it into filenames)."
-        );
+    let lists = [
+        (&cfg.deny, "`deny` under `[check]` in Pinoc.toml"),
+        (&cfg.warn, "`warn` under `[check]` in Pinoc.toml"),
+        (&cfg.allow, "`allow` under `[check]` in Pinoc.toml"),
+        (&cfg.cli_deny, "`--deny`"),
+        (&cfg.cli_allow, "`--allow`"),
+    ];
+    for (list, from) in lists {
+        for code in list {
+            if !is_wildcard(code) && !known.contains(&code.as_str()) {
+                anyhow::bail!(
+                    "`{code}`, given to {from}, is not a lint code. The codes are {}; `all` or `'*'` means every code (quote `*` so the shell does not expand it into filenames).",
+                    known.join(", ")
+                );
+            }
+        }
     }
     Ok(())
 }
 
-fn parse_confidence(s: Option<&str>) -> Confidence {
+/// An unknown value is refused: falling back to the default would leave the
+/// config saying one threshold while another is applied.
+fn parse_confidence(s: Option<&str>) -> Result<Confidence> {
     match s.map(str::to_ascii_lowercase).as_deref() {
-        Some("heuristic") => Confidence::Heuristic,
-        Some("definite") => Confidence::Definite,
-        _ => Confidence::Likely,
+        None => Ok(Confidence::Likely),
+        Some("heuristic") => Ok(Confidence::Heuristic),
+        Some("likely") => Ok(Confidence::Likely),
+        Some("definite") => Ok(Confidence::Definite),
+        Some(_) => anyhow::bail!(
+            "`confidence_threshold = \"{}\"` under `[check]` in Pinoc.toml is not a confidence level; use `heuristic`, `likely` or `definite`",
+            s.unwrap_or_default()
+        ),
     }
 }
 

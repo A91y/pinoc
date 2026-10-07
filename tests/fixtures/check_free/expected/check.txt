@@ -18,4 +18,4 @@ deny ZC003-P src/args.rs:4:0
     fix: add #[repr(C)]
 
 3 deny, 3 warn
-1 lower-confidence finding below the `likely` threshold hidden; lower `confidence_threshold` (or `--deny <code>`) to show them.
+1 lower-confidence finding (ACC003-P) below the `likely` threshold hidden; lower `confidence_threshold` (or `--deny <code>`) to show them.

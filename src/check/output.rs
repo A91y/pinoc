@@ -18,7 +18,7 @@ fn color(code: &str, on: bool) -> &str {
     }
 }
 
-pub fn render_human(findings: &[Finding], below_threshold: usize, threshold: Confidence) {
+pub fn render_human(findings: &[Finding], below_threshold: &[&str], threshold: Confidence) {
     let tty = std::io::stdout().is_terminal();
     let (red, yellow, blue, dim, bold, reset) = (
         color("\x1b[31m", tty),
@@ -62,14 +62,20 @@ pub fn render_human(findings: &[Finding], below_threshold: usize, threshold: Con
     print_below_threshold(below_threshold, threshold, dim, reset);
 }
 
-/// Report how many findings were hidden only for being below the threshold.
-fn print_below_threshold(count: usize, threshold: Confidence, dim: &str, reset: &str) {
-    if count == 0 {
+/// Report how many findings were hidden only for being below the threshold,
+/// and which codes, so `--deny <code>` can be used without guessing.
+fn print_below_threshold(hidden: &[&str], threshold: Confidence, dim: &str, reset: &str) {
+    if hidden.is_empty() {
         return;
     }
+    let count = hidden.len();
     let plural = if count == 1 { "finding" } else { "findings" };
+    let mut codes: Vec<&str> = hidden.to_vec();
+    codes.sort_unstable();
+    codes.dedup();
     println!(
-        "{dim}{count} lower-confidence {plural} below the `{}` threshold hidden; lower `confidence_threshold` (or `--deny <code>`) to show them.{reset}",
+        "{dim}{count} lower-confidence {plural} ({}) below the `{}` threshold hidden; lower `confidence_threshold` (or `--deny <code>`) to show them.{reset}",
+        codes.join(", "),
         confidence_name(threshold)
     );
 }

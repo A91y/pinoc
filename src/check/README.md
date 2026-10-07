@@ -6,14 +6,15 @@ The command parses every `.rs` file under `src/`, runs each registered lint, app
 
 ## What gets analysed
 
-The account and CPI lints run on **handlers**: any free function, `impl` method (inherent or trait impl), or trait default method that takes an accounts slice, `&[AccountView]` or `&[AccountInfo]` (also inside a tuple parameter such as `(data, accounts): (&[u8], &[AccountView])`). Accounts are bound from that slice by a slice pattern, by index, by `next_account_info`/`next_account_view`, or by a function in the crate that is handed the slice and returns an account. Method handlers are named `Type::method`.
+The account and CPI lints run on **handlers**: any free function, `impl` method (inherent or trait impl), or trait default method that takes an accounts slice, `&[AccountView]` or `&[AccountInfo]` (also inside a tuple parameter such as `(data, accounts): (&[u8], &[AccountView])`). Accounts are bound from that slice by a slice pattern, by index, by `.get(i)`/`.first()`/`.last()` (also behind `?`, `ok_or` or `unwrap`), by a `for` loop over it, by the arms of a `match` on it (`match accounts { [a, b] => .., _ => .. }`, including the accounts such a `match` hands to a `let`), by `next_account_info`/`next_account_view`, or by a function in the crate that is handed the slice and returns an account. A part of the slice is still the slice: the halves of `accounts.split_at(N)` (and the other `split_*` methods), a range such as `accounts[..N]`, and the rest of a slice pattern (`[a, b, rest @ ..]`) are bound from in the same ways. Method handlers are named `Type::method`.
 
 Accessors are matched by name, covering both current and older Pinocchio APIs: `owner`/`owned_by`/`is_owned_by`, `is_signer`, `key`/`address`, `data_len`, `try_borrow`/`try_borrow_mut`/`try_borrow_data`/`try_borrow_mut_data`, and the unchecked borrows `borrow_unchecked`/`borrow_unchecked_mut`/`borrow_data_unchecked`/`borrow_mut_data_unchecked`.
 
 The analysis covers the whole crate, not one function at a time:
 
-- **Helper functions are read, not skipped.** When an account is passed to a function defined in the crate, `pinoc` applies what that function's body does with it: which checks it makes and how it uses the account, following the helpers it calls in turn. `guards::expect_admin(state, admin)` counts as a signer check only if its body, or a function it calls, tests `is_signer()`. A helper is resolved by its path (`guards::config`, `Config::from_bytes`, `Self::check`, a trait default method called through an implementor); a call that names no single function in the crate, or names one outside it, leaves the account **delegated**, and lints stay quiet about it rather than guess.
+- **Helper functions are read, not skipped.** When an account is passed to a function defined in the crate, `pinoc` applies what that function's body does with it: which checks it makes and how it uses the account, following the helpers it calls in turn. `guards::expect_admin(state, admin)` counts as a signer check only if its body, or a function it calls, tests `is_signer()`. A helper is resolved by its path (`guards::config`, `Config::from_bytes`, `Self::check`, a trait default method called through an implementor); a call that names no single function in the crate, or names one outside it, leaves the account **delegated**, and lints stay quiet about it rather than guess. A method call (`self.check()`, `state.verify(vault)`) has no path, so it is matched against every method of that name in the crate, and counts for what all of them do.
 - **Stored accounts are followed.** When a handler moves its accounts into its own type (`Ok(Self { vault, authority })`, the typed-context style), `pinoc` follows them into every function that reaches them through that type: `self.vault` in its methods, `self.accounts.vault` in a struct that holds it, and `ix.accounts.vault` on a local or parameter of either type. A finding on such an account says where it was used and where it was bound.
+- **Instructions that share an account list are checked separately.** When two types hold the same accounts type (`Sell { accounts }`, and `Unwind { inner: Sell }` that wraps it), each is analysed as its own instruction: with its own methods, the functions that are no instruction's method, and only those methods of a type it wraps that it calls. A check `Sell::check` makes does not count for `Unwind` unless `Unwind` calls it. A finding that depends on this names the instruction: `(in `Sell::pool_reserve`, as part of `Unwind`, bound in `SellAccounts::load`)`.
 
 What establishes an account, for `ACC001-P`: its owner was checked, its address was compared to an expected one (a constant, a stored key, or a derived PDA), the handler found it empty (`is_data_empty()`), or the handler creates it (`CreateAccount { to: account, .. }`). Any of these means the data read cannot be a look-alike's.
 
@@ -23,10 +24,13 @@ Known limits of the `syn` backend:
 
 - Source is discovered under `./src` only.
 - No type resolution: methods are matched by name, and a helper by its path. Two functions that a path cannot tell apart are treated as unknown.
-- Method-call helpers (`self.check(vault)`, `vault.verify()`) are not followed; only path calls are.
+- A method call is matched by name alone. When two methods in the crate share the name and differ in what they do with an account, only what they agree on is applied.
+- Accounts taken from the slice any other way (`chunks`, `iter().find(..)`, an index computed at run time) are not bound. A handler that uses its slice and binds nothing from it is listed in `UNTRACKED-ACCOUNTS`; one that binds some accounts and takes others this way is not.
+- Which methods of a wrapped type an instruction reaches is decided by the names it calls, not by a call graph.
 - A check counts wherever it appears in the handler or its helpers. `pinoc` does not prove it runs before the use it guards, or on every path: a helper that checks only under a condition is treated as checking.
 - An owner check counts whichever owner it names. `owned_by(&TOKEN_PROGRAM_ID)` satisfies `ACC001-P` like `owned_by(&crate::ID)`.
 - Accounts stored in a type that nothing in the crate reads back through are reported as `UNTRACKED-ACCOUNTS`.
+- `ACC002-P` recognises an authority by the name it is compared against: `authority`, `admin`, `auth`, and names ending in `_authority` or `_auth`. Add the program's own in `Pinoc.toml` (`authority_names`).
 - `ZC001-P` skips a struct with nested or foreign-typed fields.
 
 ### Coverage findings
@@ -36,7 +40,7 @@ Two codes report what a run could not analyse, so an empty result is never mista
 | Code | id | Reports |
 |---|---|---|
 | `NO-HANDLERS` | `no-handlers` | No handler was found anywhere (or there is no `src/`), so the account and CPI lints analysed nothing; only the struct-layout lints ran. Replaces `✅ No issues found.`. Allow it for a crate that is not a program. |
-| `UNTRACKED-ACCOUNTS` | `untracked-accounts` | One finding listing the handlers that store their accounts in a struct no analysed function reads them back from. Allow it once the limit is acknowledged. |
+| `UNTRACKED-ACCOUNTS` | `untracked-accounts` | One finding listing the handlers whose accounts were not analysed, each with the reason: it stores them in a struct no analysed function reads them back from, or it uses its accounts slice and no account could be bound from it. Checks and uses in those handlers are not reported, so the run is not a clean result for them. Allow it once the limit is acknowledged. |
 
 `--deny all` (or `--deny NO-HANDLERS`) makes CI fail on a run that analysed nothing.
 
@@ -109,7 +113,10 @@ deny  = ["ZC001-P"]          # promote to deny (fails the check)
 warn  = ["ZC003-P"]          # downgrade to advisory
 allow = ["ACC003-P"]         # suppress entirely
 confidence_threshold = "likely"   # drop findings weaker than this
+authority_names = ["keeper"]      # more names ACC002-P treats as an authority that must sign
 ```
+
+A key under `[check]` that is not one of these, or a section `pinoc` does not know, stops the command with the name it did not recognise. So does a value that cannot be applied: a `confidence_threshold` other than `heuristic`, `likely` or `definite`, or an entry in `deny`, `warn` or `allow` that is not a lint code. A misspelt `authority_names` would otherwise leave a finding unreported, which reads the same as a clean program.
 
 **Precedence.** A CLI flag overrides the config file for the code(s) it names: `--deny ZC001-P` wins over a config `allow = ["ZC001-P"]` (and over a config `allow = ["*"]`), and `--allow` beats a config `deny`. Within one layer, `allow` beats `deny`. So the order is: CLI allow, then CLI deny, then config allow, then config deny, then config warn, then the lint's default.
 
@@ -143,7 +150,7 @@ The process exits `1` if any surviving finding is `deny`, else `0`. Advisory fin
 When `confidence_threshold` drops one or more findings for being too low-confidence (see [Configuration](#configuration)), the human output prints a trailing line so the hidden count is never silent:
 
 ```
-N lower-confidence finding(s) below the `<threshold>` threshold hidden; lower `confidence_threshold` (or `--deny <code>`) to show them.
+N lower-confidence finding(s) (<codes>) below the `<threshold>` threshold hidden; lower `confidence_threshold` (or `--deny <code>`) to show them.
 ```
 
 It means exactly `N` findings *were produced* but held back because their confidence is weaker than the active `confidence_threshold` (for example, a `heuristic` lint like `ACC003-P` under the default `likely` threshold). They are not failures and never affect the exit code. To see them, lower `confidence_threshold` (e.g. to `heuristic`) so they print at their natural severity, or `--deny <code>` a specific one to force it through (which also makes it fail the check). The count only includes findings hidden by the threshold, not ones you silenced with `allow`/`--allow` or an inline `// pinoc:allow`. This line appears in human output only; the threshold applies to `--json` too, so its array already excludes the hidden findings (lower `confidence_threshold` to include them).

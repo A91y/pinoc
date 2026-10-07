@@ -75,6 +75,7 @@ pub enum Use {
     CloseDrainLamports,
 }
 
+#[derive(Clone)]
 pub struct AccountBinding {
     pub name: String,
     pub origin: Origin,
@@ -139,6 +140,15 @@ impl AccountBinding {
     }
 }
 
+/// One instruction's view of a handler's accounts: bindings, CPI sites, the
+/// functions followed, and the instruction type when several share the accounts.
+type Variant = (
+    Vec<AccountBinding>,
+    Vec<CpiSite>,
+    Vec<String>,
+    Option<String>,
+);
+
 pub struct Handler {
     /// `function` for a free function, `Type::method` for a method.
     pub name: String,
@@ -150,15 +160,24 @@ pub struct Handler {
     /// The functions that reach the stored accounts through that type and were
     /// analysed as part of this handler.
     pub followed_by: Vec<String>,
+    /// The handler works on its accounts slice but no account could be bound
+    /// from it, so nothing it does with them was analysed.
+    pub unbound_accounts: bool,
+    /// The instruction type this table is for, when several share the accounts.
+    pub instruction: Option<String>,
 }
 
 impl Handler {
     /// For evidence text: where a use happened, when not in the handler itself.
     pub fn used_in(&self, binding: &AccountBinding) -> String {
         match &binding.read_in {
-            Some(function) if *function != self.name => {
-                format!(" (in `{function}`, bound in `{}`)", self.name)
-            }
+            Some(function) if *function != self.name => match &self.instruction {
+                Some(instruction) if !function.starts_with(&format!("{instruction}::")) => format!(
+                    " (in `{function}`, as part of `{instruction}`, bound in `{}`)",
+                    self.name
+                ),
+                _ => format!(" (in `{function}`, bound in `{}`)", self.name),
+            },
             _ => String::new(),
         }
     }
@@ -290,8 +309,32 @@ impl FnInfo<'_> {
 enum ParamKind {
     Account,
     Bytes,
+    /// An address, such as an account's key handed to a function to compare.
+    Key,
     Other,
 }
+
+/// Slice methods that give one account.
+const ELEMENT_METHODS: &[&str] = &[
+    "get",
+    "get_mut",
+    "get_unchecked",
+    "get_unchecked_mut",
+    "first",
+    "first_mut",
+    "last",
+    "last_mut",
+];
+/// Methods that pass an `Option` or `Result` through to the value inside.
+const OPTION_ADAPTERS: &[&str] = &[
+    "ok_or",
+    "ok_or_else",
+    "unwrap",
+    "expect",
+    "unwrap_unchecked",
+];
+
+const KEY_TYPES: &[&str] = &["Address", "Pubkey"];
 
 fn peel_type(ty: &syn::Type) -> &syn::Type {
     match ty {
@@ -309,6 +352,7 @@ fn param_kind(ty: &syn::Type) -> ParamKind {
         },
         other => match last_segment_ident(other) {
             Some(id) if ACCOUNT_SLICE_TYPES.contains(&id.as_str()) => ParamKind::Account,
+            Some(id) if KEY_TYPES.contains(&id.as_str()) => ParamKind::Key,
             _ => ParamKind::Other,
         },
     }
@@ -333,6 +377,10 @@ enum ParamSummary {
     Bytes {
         len_checked: bool,
     },
+    /// An address; `compared` when the function compares it to something.
+    Key {
+        compared: bool,
+    },
     Other,
 }
 
@@ -343,6 +391,8 @@ struct Analyzer<'a> {
     /// Struct name to `(field, field type name)`.
     structs: HashMap<String, Vec<(String, String)>>,
     summaries: RefCell<HashMap<usize, Option<Rc<Summary>>>>,
+    /// Authority names the program adds to the built-in ones.
+    authority_names: Vec<String>,
 }
 
 impl<'a> Analyzer<'a> {
@@ -352,6 +402,7 @@ impl<'a> Analyzer<'a> {
             by_name: HashMap::new(),
             structs: HashMap::new(),
             summaries: RefCell::new(HashMap::new()),
+            authority_names: Vec::new(),
         };
         for file in files {
             let path = file.path.display().to_string();
@@ -474,6 +525,19 @@ impl<'a> Analyzer<'a> {
         })
     }
 
+    /// The crate methods a `receiver.name(..)` call could name: every method
+    /// with a receiver and that name. Without types the receiver does not say
+    /// which, so a caller may only rely on what all of them do.
+    fn resolve_methods(&self, name: &str) -> Vec<usize> {
+        self.by_name
+            .get(name)
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|i| self.fns[*i].has_receiver())
+            .collect()
+    }
+
     /// The summary of a crate function. `None` while it is being computed, which
     /// is how a recursive call is seen: as a call to something unknown.
     fn summary(&self, index: usize) -> Option<Rc<Summary>> {
@@ -490,6 +554,9 @@ impl<'a> Analyzer<'a> {
                 (Some(name), ParamKind::Account) => ex.add_binding(name.clone(), Origin::Param),
                 (Some(name), ParamKind::Bytes) => {
                     ex.bytes.insert(name.clone(), false);
+                }
+                (Some(name), ParamKind::Key) => {
+                    ex.keys.insert(name.clone(), false);
                 }
                 _ => {}
             }
@@ -517,6 +584,9 @@ impl<'a> Analyzer<'a> {
                 (Some(name), ParamKind::Bytes) => ParamSummary::Bytes {
                     len_checked: ex.bytes.get(name).copied().unwrap_or(false),
                 },
+                (Some(name), ParamKind::Key) => ParamSummary::Key {
+                    compared: ex.keys.get(name).copied().unwrap_or(false),
+                },
                 _ => ParamSummary::Other,
             })
             .collect();
@@ -542,14 +612,49 @@ impl<'a> Analyzer<'a> {
         finder.0
     }
 
+    /// `holder` and the holders among its fields, transitively: the types
+    /// whose methods are part of the instruction `holder` is.
+    fn contained_holders<'h>(&self, holder: &'h String, holders: &'h [String]) -> Vec<&'h String> {
+        let mut reachable = vec![holder];
+        let mut next = 0;
+        while next < reachable.len() {
+            let fields = self
+                .structs
+                .get(reachable[next])
+                .cloned()
+                .unwrap_or_default();
+            for candidate in holders {
+                if !reachable.contains(&candidate) && fields.iter().any(|(_, ty)| ty == candidate) {
+                    reachable.push(candidate);
+                }
+            }
+            next += 1;
+        }
+        reachable
+    }
+
     /// The structs with a field of type `context`.
     fn holders_of(&self, context: &str) -> Vec<String> {
-        let mut holders: Vec<String> = self
-            .structs
-            .iter()
-            .filter(|(_, fields)| fields.iter().any(|(_, ty)| ty == context))
-            .map(|(name, _)| name.clone())
-            .collect();
+        // Transitively: `Unwind { inner: Liquidate { accounts } }` holds it too.
+        let mut holders: Vec<String> = Vec::new();
+        loop {
+            let next: Vec<String> = self
+                .structs
+                .iter()
+                .filter(|(name, fields)| {
+                    name.as_str() != context
+                        && !holders.contains(name)
+                        && fields
+                            .iter()
+                            .any(|(_, ty)| ty == context || holders.contains(ty))
+                })
+                .map(|(name, _)| name.clone())
+                .collect();
+            if next.is_empty() {
+                break;
+            }
+            holders.extend(next);
+        }
         holders.sort();
         holders
     }
@@ -576,8 +681,9 @@ fn module_path(path: &std::path::Path) -> Vec<String> {
 /// Builds a fact table for every instruction handler in the crate. A handler
 /// is a free function, `impl` method, or trait default method taking a
 /// `&[AccountInfo]`/`&[AccountView]` slice.
-pub fn analyze(files: &[ParsedFile]) -> Vec<Handler> {
-    let analyzer = Analyzer::new(files);
+pub fn analyze(files: &[ParsedFile], authority_names: &[String]) -> Vec<Handler> {
+    let mut analyzer = Analyzer::new(files);
+    analyzer.authority_names = authority_names.to_vec();
     let mut handlers = Vec::new();
 
     for (index, info) in analyzer.fns.iter().enumerate() {
@@ -591,36 +697,139 @@ pub fn analyze(files: &[ParsedFile]) -> Vec<Handler> {
         ex.context = info.owner.clone();
         ex.visit_block(info.block);
         ex.apply_macro_validations();
+        // The slice was used for more than handing it on, and nothing was bound.
+        // A function that only hands an account back out of the slice is an
+        // accessor; its caller binds what it returns.
+        let unbound_accounts =
+            ex.bindings.is_empty() && ex.slice_uses > 0 && !analyzer.returns_account(index);
 
-        // Follow the accounts this handler stored in its own type.
-        let mut followed_by = Vec::new();
+        // Follow the accounts this handler stored in its own type. Each struct
+        // that holds the type is a separate instruction (`Liquidate`, and
+        // `Unwind` that wraps it), so each gets its own table: a check one
+        // instruction makes must not satisfy another that shares the accounts.
+        let mut variants: Vec<Variant> = Vec::new();
         if let (Some(context), false) = (info.owner.clone(), ex.stored.is_empty()) {
             let holders = analyzer.holders_of(&context);
-            for (other, consumer) in analyzer.fns.iter().enumerate() {
-                if other == index {
-                    continue;
+            let consumers: Vec<(usize, Vec<(String, Root)>)> = analyzer
+                .fns
+                .iter()
+                .enumerate()
+                .filter(|(other, _)| *other != index)
+                .filter_map(|(other, consumer)| {
+                    let roots = consumer_roots(consumer, &context, &holders);
+                    (!roots.is_empty() || constructs(consumer.block, &context, &holders))
+                        .then_some((other, roots))
+                })
+                .collect();
+
+            // The consumers each holder reaches: its own methods, those of the
+            // holders it contains, and everything that is not a holder's method.
+            let mut groups: Vec<(Option<String>, Vec<usize>)> = Vec::new();
+            let entries: Vec<Option<&String>> = if holders.is_empty() {
+                vec![None]
+            } else {
+                holders.iter().map(Some).collect()
+            };
+            for entry in entries {
+                // Everything that is not a holder's method, and the entry
+                // holder's own methods. A holder it contains contributes only
+                // the methods that are called from what is already selected:
+                // `Unwind` calls `self.inner.sold_pool()`, not `Liquidate::check`.
+                let contained: Vec<&String> = entry
+                    .map(|holder| analyzer.contained_holders(holder, &holders))
+                    .unwrap_or_default();
+                let owner_of = |position: usize| analyzer.fns[consumers[position].0].owner.as_ref();
+                let mut selected: Vec<usize> = (0..consumers.len())
+                    .filter(|p| match owner_of(*p) {
+                        Some(owner) if holders.contains(owner) => entry == Some(owner),
+                        _ => true,
+                    })
+                    .collect();
+                loop {
+                    let called: HashSet<String> = selected
+                        .iter()
+                        .flat_map(|p| called_names(analyzer.fns[consumers[*p].0].block))
+                        .collect();
+                    let more: Vec<usize> = (0..consumers.len())
+                        .filter(|p| !selected.contains(p))
+                        .filter(|p| {
+                            owner_of(*p).is_some_and(|owner| contained.contains(&owner))
+                                && called.contains(&analyzer.fns[consumers[*p].0].name)
+                        })
+                        .collect();
+                    if more.is_empty() {
+                        break;
+                    }
+                    selected.extend(more);
                 }
-                let roots = consumer_roots(consumer, &context, &holders);
-                if roots.is_empty() && !constructs(consumer.block, &context, &holders) {
-                    continue;
+                selected.sort_unstable();
+                if !selected.is_empty() && !groups.iter().any(|(_, group)| *group == selected) {
+                    groups.push((entry.cloned(), selected));
                 }
-                ex.enter(consumer, roots);
-                ex.visit_block(consumer.block);
-                ex.apply_macro_validations();
-                followed_by.push(consumer.display());
+            }
+
+            let shared = groups.len() > 1;
+            for (entry, group) in groups {
+                let mut variant = Extractor::new(&analyzer, info);
+                variant.bindings = ex.bindings.clone();
+                variant.cpi_sites = ex.cpi_sites.clone();
+                variant.context = Some(context.clone());
+                variant.context_fields = ex.context_fields.clone();
+                let mut followed_by = Vec::new();
+                for position in group {
+                    let (other, roots) = &consumers[position];
+                    let consumer = &analyzer.fns[*other];
+                    variant.enter(consumer, roots.clone());
+                    variant.visit_block(consumer.block);
+                    variant.apply_macro_validations();
+                    followed_by.push(consumer.display());
+                }
+                variants.push((
+                    variant.bindings,
+                    variant.cpi_sites,
+                    followed_by,
+                    entry.filter(|_| shared),
+                ));
             }
         }
+        if variants.is_empty() {
+            variants.push((ex.bindings, ex.cpi_sites, Vec::new(), None));
+        }
 
-        handlers.push(Handler {
-            name: info.display(),
-            file: info.file.clone(),
-            bindings: ex.bindings,
-            cpi_sites: ex.cpi_sites,
-            stores_accounts: ex.stores_accounts,
-            followed_by,
-        });
+        for (bindings, cpi_sites, followed_by, instruction) in variants {
+            handlers.push(Handler {
+                name: info.display(),
+                file: info.file.clone(),
+                bindings,
+                cpi_sites,
+                stores_accounts: ex.stores_accounts.clone(),
+                followed_by,
+                unbound_accounts,
+                instruction,
+            });
+        }
     }
     handlers
+}
+
+/// The names of every function and method called in `block`.
+fn called_names(block: &syn::Block) -> HashSet<String> {
+    struct Names(HashSet<String>);
+    impl<'ast> Visit<'ast> for Names {
+        fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
+            self.0.insert(node.method.to_string());
+            syn::visit::visit_expr_method_call(self, node);
+        }
+        fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
+            if let Some(name) = last_call_segment(&node.func) {
+                self.0.insert(name);
+            }
+            syn::visit::visit_expr_call(self, node);
+        }
+    }
+    let mut names = Names(HashSet::new());
+    names.visit_block(block);
+    names.0
 }
 
 /// The names in `consumer` that hold the context or a struct containing it:
@@ -756,6 +965,17 @@ struct Extractor<'a, 'i> {
     bytes: HashMap<String, bool>,
     /// Locals holding an account's unchecked-borrowed data, and that account.
     byte_locals: HashMap<String, usize>,
+    /// Locals that are a part of the accounts slice (`split_at_mut`, a range, a
+    /// `rest @ ..` tail). Accounts are bound from them as from the slice itself.
+    slices: HashSet<String>,
+    /// How many times the slice is used other than to hand it on whole or ask
+    /// its length. With no binding to show for it, the handler was not analysed.
+    slice_uses: usize,
+    /// What the arms of the last `match` on the slice evaluate to, by position
+    /// in the arm's tuple: the binding, where the arm gives one.
+    match_values: Vec<Option<usize>>,
+    /// Address parameters, and whether each is compared to something.
+    keys: HashMap<String, bool>,
 }
 
 impl<'a, 'i> Extractor<'a, 'i> {
@@ -778,6 +998,10 @@ impl<'a, 'i> Extractor<'a, 'i> {
             roots: HashMap::new(),
             bytes: HashMap::new(),
             byte_locals: HashMap::new(),
+            slices: HashSet::new(),
+            slice_uses: 0,
+            match_values: Vec::new(),
+            keys: HashMap::new(),
         }
     }
 
@@ -792,6 +1016,8 @@ impl<'a, 'i> Extractor<'a, 'i> {
         self.instr_programs.clear();
         self.bytes.clear();
         self.byte_locals.clear();
+        self.slices.clear();
+        self.keys.clear();
         self.roots = roots.into_iter().collect();
     }
 
@@ -815,6 +1041,7 @@ impl<'a, 'i> Extractor<'a, 'i> {
     fn resolve(&self, expr: &syn::Expr) -> Option<usize> {
         match peel(expr) {
             syn::Expr::Path(p) => self.index.get(&p.path.get_ident()?.to_string()).copied(),
+            syn::Expr::Index(idx) => self.index.get(&self.indexed_name(idx)?).copied(),
             syn::Expr::Field(f) => {
                 let syn::Member::Named(member) = &f.member else {
                     return None;
@@ -823,8 +1050,59 @@ impl<'a, 'i> Extractor<'a, 'i> {
                     .then(|| self.context_fields.get(&member.to_string()).copied())
                     .flatten()
             }
+            // `self.accounts.observation.ok_or(..)?` and `Some(&*account)`:
+            // the account an `Option` holds.
+            syn::Expr::Try(t) => self.resolve(&t.expr),
+            syn::Expr::MethodCall(m)
+                if OPTION_ADAPTERS.contains(&m.method.to_string().as_str()) =>
+            {
+                self.resolve(&m.receiver)
+            }
+            syn::Expr::Call(c)
+                if c.args.len() == 1
+                    && last_call_segment(&c.func).is_some_and(|s| s == "Some" || s == "Ok") =>
+            {
+                self.resolve(&c.args[0])
+            }
             _ => None,
         }
+    }
+
+    /// Binds every `accounts[N]` inside `expr`, so a call can be classified
+    /// with its arguments already known.
+    fn bind_inline_indexes(&mut self, expr: &syn::Expr) {
+        struct Finder<'e>(Vec<&'e syn::ExprIndex>);
+        impl<'ast> Visit<'ast> for Finder<'ast> {
+            fn visit_expr_index(&mut self, node: &'ast syn::ExprIndex) {
+                self.0.push(node);
+                syn::visit::visit_expr_index(self, node);
+            }
+        }
+        let mut finder = Finder(Vec::new());
+        finder.visit_expr(expr);
+        for index in finder.0 {
+            if let Some(name) = self.indexed_name(index) {
+                self.add_binding(name, Origin::Index);
+            }
+        }
+    }
+
+    /// `accounts[1]` as a binding name, for a literal index into the slice.
+    fn indexed_name(&self, idx: &syn::ExprIndex) -> Option<String> {
+        let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(position),
+            ..
+        }) = idx.index.as_ref()
+        else {
+            return None;
+        };
+        let syn::Expr::Path(p) = peel(&idx.expr) else {
+            return None;
+        };
+        if !self.is_accounts_expr(&idx.expr) {
+            return None;
+        }
+        Some(format!("{}[{position}]", p.path.get_ident()?))
     }
 
     fn root_of(&self, expr: &syn::Expr) -> Option<Root> {
@@ -849,12 +1127,7 @@ impl<'a, 'i> Extractor<'a, 'i> {
         let context = self.context.as_deref()?;
         if ty == context {
             Some(Root::Context)
-        } else if self
-            .analyzer
-            .structs
-            .get(ty)
-            .is_some_and(|fields| fields.iter().any(|(_, field_ty)| field_ty == context))
-        {
+        } else if self.analyzer.holders_of(context).iter().any(|h| h == ty) {
             Some(Root::Holder(ty.to_string()))
         } else {
             None
@@ -945,6 +1218,7 @@ impl<'a, 'i> Extractor<'a, 'i> {
 impl<'ast> Visit<'ast> for Extractor<'_, '_> {
     fn visit_local(&mut self, local: &'ast syn::Local) {
         if let Some(init) = &local.init {
+            self.discover_slices(&local.pat, &init.expr);
             self.discover_binding(&local.pat, &init.expr);
             if let Some(name) = local_name(&local.pat) {
                 // Record a `let ix = InstructionView { … }` so a later invoke resolves it.
@@ -966,7 +1240,27 @@ impl<'ast> Visit<'ast> for Extractor<'_, '_> {
                 }
             }
         }
+        self.match_values.clear();
         syn::visit::visit_local(self, local);
+        // `let (a, b) = match accounts { [x, y] => (Some(x), Some(y)), .. }`:
+        // the accounts the arms named, under the names they leave the match by.
+        let values = std::mem::take(&mut self.match_values);
+        let from_match = local
+            .init
+            .as_ref()
+            .is_some_and(|init| matches!(strip_try(&init.expr), syn::Expr::Match(_)));
+        if from_match {
+            let names: Vec<Option<String>> = match &local.pat {
+                syn::Pat::Tuple(tuple) => tuple.elems.iter().map(local_name).collect(),
+                other => vec![local_name(other)],
+            };
+            for (name, value) in names.into_iter().zip(values) {
+                if let (Some(name), Some(idx)) = (name, value) {
+                    self.bindings[idx].name = name.clone();
+                    self.index.insert(name, idx);
+                }
+            }
+        }
     }
 
     fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
@@ -977,7 +1271,14 @@ impl<'ast> Visit<'ast> for Extractor<'_, '_> {
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
+        self.bind_inline_indexes(&node.receiver);
+        for arg in &node.args {
+            self.bind_inline_indexes(arg);
+        }
         let method = node.method.to_string();
+        if !matches!(method.as_str(), "len" | "is_empty") && self.is_accounts_expr(&node.receiver) {
+            self.slice_uses += 1;
+        }
         if method == "eq" || method == "ne" {
             if let Some(arg) = node.args.first() {
                 self.note_comparison(&node.receiver, arg, node.span());
@@ -1000,6 +1301,39 @@ impl<'ast> Visit<'ast> for Extractor<'_, '_> {
                 }
             }
         }
+        // A method of this crate, called on anything but an account. Several
+        // types may have a method of this name, so only what every one of them
+        // does with an address or bytes argument is applied.
+        if self.resolve(&node.receiver).is_none() && !node.args.is_empty() {
+            let summaries: Vec<Rc<Summary>> = self
+                .analyzer
+                .resolve_methods(&method)
+                .into_iter()
+                .filter_map(|callee| self.analyzer.summary(callee))
+                .collect();
+            if !summaries.is_empty() {
+                for (position, arg) in node.args.iter().enumerate() {
+                    let all = |test: &dyn Fn(&ParamSummary) -> bool| {
+                        summaries
+                            .iter()
+                            .all(|s| s.params.get(position).is_some_and(test))
+                    };
+                    if all(&|p| matches!(p, ParamSummary::Key { compared: true })) {
+                        self.apply_param(arg, &ParamSummary::Key { compared: true }, node.span());
+                    } else if all(&|p| matches!(p, ParamSummary::Bytes { len_checked: true })) {
+                        self.apply_param(
+                            arg,
+                            &ParamSummary::Bytes { len_checked: true },
+                            node.span(),
+                        );
+                    } else if let [only] = summaries.as_slice() {
+                        if let Some(param) = only.params.get(position) {
+                            self.apply_param(arg, param, node.span());
+                        }
+                    }
+                }
+            }
+        }
         if let Some(idx) = self.resolve(&node.receiver) {
             if let Some(v) = validation_for_method(&method) {
                 self.bindings[idx].validations.insert(v);
@@ -1016,8 +1350,80 @@ impl<'ast> Visit<'ast> for Extractor<'_, '_> {
     }
 
     fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
+        for arg in &node.args {
+            self.bind_inline_indexes(arg);
+        }
         self.classify_call(node);
         syn::visit::visit_expr_call(self, node);
+    }
+
+    fn visit_expr_index(&mut self, node: &'ast syn::ExprIndex) {
+        // `accounts[1]` used in place is that account, under that name.
+        if let Some(name) = self.indexed_name(node) {
+            self.add_binding(name, Origin::Index);
+        }
+        if self.is_accounts_expr(&node.expr) {
+            self.slice_uses += 1;
+        }
+        syn::visit::visit_expr_index(self, node);
+    }
+
+    fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
+        if self.is_accounts_iteration(&node.expr) {
+            self.slice_uses += 1;
+            // `for account in accounts`: every account, under the loop's name.
+            if let Some(name) = local_name(&node.pat) {
+                self.add_binding(name, Origin::Iter);
+            }
+        }
+        syn::visit::visit_expr_for_loop(self, node);
+    }
+
+    fn visit_expr_match(&mut self, node: &'ast syn::ExprMatch) {
+        if !self.is_accounts_expr(&node.expr) {
+            syn::visit::visit_expr_match(self, node);
+            return;
+        }
+        self.slice_uses += 1;
+        // `match accounts { [a, b] => .., _ => .. }`: each arm names its own
+        // accounts, which exist only inside it. A name an arm reuses is a new
+        // account there, not the one outside.
+        let mut values: Vec<Option<usize>> = Vec::new();
+        for arm in &node.arms {
+            let outer_index = self.index.clone();
+            let outer_slices = self.slices.clone();
+            if let syn::Pat::Slice(slice) = &arm.pat {
+                for elem in &slice.elems {
+                    let syn::Pat::Ident(p) = elem else {
+                        continue;
+                    };
+                    let name = p.ident.to_string();
+                    if p.subpat.is_some() {
+                        self.slices.insert(name);
+                    } else {
+                        self.index.insert(name.clone(), self.bindings.len());
+                        self.bindings
+                            .push(AccountBinding::new(name, Origin::SlicePattern));
+                    }
+                }
+            }
+            self.visit_arm(arm);
+            let results: Vec<&syn::Expr> = match peel(&arm.body) {
+                syn::Expr::Tuple(t) => t.elems.iter().collect(),
+                other => vec![other],
+            };
+            for (position, result) in results.into_iter().enumerate() {
+                if values.len() <= position {
+                    values.resize(position + 1, None);
+                }
+                if values[position].is_none() {
+                    values[position] = self.resolve(result);
+                }
+            }
+            self.index = outer_index;
+            self.slices = outer_slices;
+        }
+        self.match_values = values;
     }
 
     fn visit_expr_struct(&mut self, node: &'ast syn::ExprStruct) {
@@ -1087,6 +1493,8 @@ impl Extractor<'_, '_> {
                         // `rest @ ..` binds the remaining slice, not an account.
                         if p.subpat.is_none() {
                             self.add_binding(p.ident.to_string(), Origin::SlicePattern);
+                        } else {
+                            self.slices.insert(p.ident.to_string());
                         }
                     }
                 }
@@ -1106,20 +1514,102 @@ impl Extractor<'_, '_> {
         }
     }
 
+    /// The accounts slice, or a local that is a part of it.
     fn is_accounts_expr(&self, expr: &syn::Expr) -> bool {
-        let Some(param) = self.accounts_param.as_deref() else {
+        let syn::Expr::Path(p) = peel(expr) else {
             return false;
         };
-        matches!(expr, syn::Expr::Path(p) if p.path.is_ident(param))
+        let Some(name) = p.path.get_ident().map(|id| id.to_string()) else {
+            return false;
+        };
+        self.accounts_param.as_deref() == Some(name.as_str()) || self.slices.contains(&name)
     }
 
+    /// `accounts[0]`, `accounts.get(0)` or `accounts.first()`: one account, also
+    /// behind `?` or an `Option` adapter. A range is a sub-slice.
     fn is_index_of_accounts(&self, expr: &syn::Expr) -> bool {
-        let expr = strip_ref(expr);
+        let expr = strip_ref(strip_try(strip_ref(expr)));
         match expr {
-            syn::Expr::Index(idx) => self.is_accounts_expr(&idx.expr),
-            syn::Expr::MethodCall(m) => m.method == "get" && self.is_accounts_expr(&m.receiver),
+            syn::Expr::Index(idx) => {
+                !matches!(idx.index.as_ref(), syn::Expr::Range(_))
+                    && self.is_accounts_expr(&idx.expr)
+            }
+            syn::Expr::MethodCall(m) => {
+                let method = m.method.to_string();
+                if ELEMENT_METHODS.contains(&method.as_str()) {
+                    self.is_accounts_expr(&m.receiver)
+                } else {
+                    OPTION_ADAPTERS.contains(&method.as_str())
+                        && self.is_index_of_accounts(&m.receiver)
+                }
+            }
+            syn::Expr::Unsafe(u) => match u.block.stmts.as_slice() {
+                [syn::Stmt::Expr(inner, None)] => self.is_index_of_accounts(inner),
+                _ => false,
+            },
             _ => false,
         }
+    }
+
+    /// `accounts`, `accounts.iter()` or `accounts.iter_mut()` as a loop source.
+    fn is_accounts_iteration(&self, expr: &syn::Expr) -> bool {
+        match strip_ref(expr) {
+            syn::Expr::MethodCall(m) => {
+                (m.method == "iter" || m.method == "iter_mut") && self.is_accounts_expr(&m.receiver)
+            }
+            other => self.is_accounts_expr(other),
+        }
+    }
+
+    /// Records the locals a `let` makes out of the accounts slice: the halves of
+    /// a split, a range of it, or the slice under another name.
+    fn discover_slices(&mut self, pat: &syn::Pat, init: &syn::Expr) {
+        let init = strip_try(init);
+        match pat {
+            syn::Pat::Tuple(tuple) => {
+                let Some(method) = self.split_of_accounts(init) else {
+                    return;
+                };
+                let names: Vec<Option<String>> = tuple.elems.iter().map(local_name).collect();
+                // `split_first` and `split_last` give one account, then the rest.
+                let single = matches!(
+                    method.as_str(),
+                    "split_first" | "split_first_mut" | "split_last" | "split_last_mut"
+                )
+                .then_some(0);
+                for (position, name) in names.into_iter().enumerate() {
+                    let Some(name) = name else {
+                        continue;
+                    };
+                    if single == Some(position) {
+                        self.add_binding(name, Origin::Index);
+                    } else {
+                        self.slices.insert(name);
+                    }
+                }
+            }
+            syn::Pat::Ident(p) => {
+                let is_range = matches!(strip_ref(init), syn::Expr::Index(idx)
+                    if matches!(idx.index.as_ref(), syn::Expr::Range(_)) && self.is_accounts_expr(&idx.expr));
+                if is_range || self.is_accounts_expr(init) {
+                    self.slices.insert(p.ident.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The `split_*` method called on the accounts slice somewhere in `expr`
+    /// (`accounts.split_first().ok_or(..)`), if any.
+    fn split_of_accounts(&self, expr: &syn::Expr) -> Option<String> {
+        let syn::Expr::MethodCall(m) = strip_try(peel(expr)) else {
+            return None;
+        };
+        let method = m.method.to_string();
+        if method.starts_with("split_") && self.is_accounts_expr(&m.receiver) {
+            return Some(method);
+        }
+        self.split_of_accounts(&m.receiver)
     }
 
     /// `let a = next(accounts, 0)?`: a crate function that is handed the slice
@@ -1156,6 +1646,12 @@ impl Extractor<'_, '_> {
         };
         let fn_seg = segments[segments.len() - 1].clone();
         let type_seg = (segments.len() >= 2).then(|| segments[segments.len() - 2].clone());
+
+        // `Some(account)` and `Ok(account)` wrap the account; nothing is handed
+        // to other code.
+        if type_seg.is_none() && (fn_seg == "Some" || fn_seg == "Ok") {
+            return;
+        }
 
         // `invoke`/`invoke_signed(...)`: mark CPI accounts, record the callee.
         if type_seg.is_none() && CPI_FUNCS.contains(&fn_seg.as_str()) {
@@ -1215,6 +1711,22 @@ impl Extractor<'_, '_> {
 
     /// Applies what a callee does with one parameter to the argument passed for it.
     fn apply_param(&mut self, arg: &syn::Expr, param: &ParamSummary, call: proc_macro2::Span) {
+        // An account's address, or an address parameter, handed to a function
+        // of this crate that compares it.
+        if let ParamSummary::Key { compared: true } = param {
+            if let Some(idx) = self.key_call_binding(arg) {
+                self.bindings[idx]
+                    .validations
+                    .insert(Validation::KeyCompared);
+            }
+            if let Some(own) = self
+                .key_param(arg)
+                .and_then(|name| self.keys.get_mut(&name))
+            {
+                *own = true;
+            }
+            return;
+        }
         if let Some(idx) = self.resolve(arg) {
             let ParamSummary::Account {
                 validations,
@@ -1280,15 +1792,37 @@ impl Extractor<'_, '_> {
     /// Record a key comparison `a <cmp> b`: mark the key side `KeyCompared`, and if
     /// the other side names an authority field/var, mark it an authority position.
     fn note_comparison(&mut self, a: &syn::Expr, b: &syn::Expr, span: proc_macro2::Span) {
+        for side in [a, b] {
+            if let Some(compared) = self
+                .key_param(side)
+                .and_then(|name| self.keys.get_mut(&name))
+            {
+                *compared = true;
+            }
+        }
         for (side, other) in [(a, b), (b, a)] {
             if let Some(idx) = self.key_call_binding(side) {
                 self.bindings[idx]
                     .validations
                     .insert(Validation::KeyCompared);
-                if self.bindings[idx].authority_site.is_none() && is_authority_ref(other) {
+                if self.bindings[idx].authority_site.is_none()
+                    && is_authority_ref(other, &self.analyzer.authority_names)
+                {
                     self.bindings[idx].authority_site = Some(self.site(span));
                 }
             }
+        }
+    }
+
+    /// The address parameter an expression names, through `&`, `*` and `.as_array()`.
+    fn key_param(&self, expr: &syn::Expr) -> Option<String> {
+        match peel(expr) {
+            syn::Expr::Path(p) => {
+                let name = p.path.get_ident()?.to_string();
+                self.keys.contains_key(&name).then_some(name)
+            }
+            syn::Expr::MethodCall(m) if m.args.is_empty() => self.key_param(&m.receiver),
+            _ => None,
         }
     }
 
@@ -1368,17 +1902,18 @@ fn peel(expr: &syn::Expr) -> &syn::Expr {
 
 /// Whether `expr` names an authority field/var (`state.authority`, `mint_auth`), the
 /// value an account's key is compared against.
-fn is_authority_ref(expr: &syn::Expr) -> bool {
+fn is_authority_ref(expr: &syn::Expr, extra: &[String]) -> bool {
+    let named = |name: &str| is_authority_name(name) || extra.iter().any(|e| e == name);
     match peel(expr) {
         syn::Expr::Field(f) => {
-            matches!(&f.member, syn::Member::Named(id) if is_authority_name(&id.to_string()))
+            matches!(&f.member, syn::Member::Named(id) if named(&id.to_string()))
         }
-        syn::Expr::MethodCall(m) => is_authority_name(&m.method.to_string()),
+        syn::Expr::MethodCall(m) => named(&m.method.to_string()),
         syn::Expr::Path(p) => p
             .path
             .segments
             .last()
-            .is_some_and(|s| is_authority_name(&s.ident.to_string())),
+            .is_some_and(|s| named(&s.ident.to_string())),
         _ => false,
     }
 }

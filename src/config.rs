@@ -7,7 +7,10 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 
+// An unknown section is refused: a misspelt `[check]` would otherwise be a
+// config that silently does nothing.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PinocConfig {
     pub provider: ProviderConfig,
     #[serde(default)]
@@ -41,7 +44,10 @@ pub struct ClientConfig {
     pub codama_out_dir: Option<String>,
 }
 
+// An unknown key is refused: a misspelt `authority_names` would otherwise
+// leave a finding unreported, which reads the same as a clean program.
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CheckConfig {
     #[serde(default)]
     pub deny: Vec<String>,
@@ -52,6 +58,11 @@ pub struct CheckConfig {
     /// "heuristic" | "likely" | "definite"; findings weaker than this are dropped.
     #[serde(default)]
     pub confidence_threshold: Option<String>,
+    /// Names, besides `authority`/`admin`/`auth`, that hold an authority's key
+    /// in this program (`keeper`, `operator`). `ACC002-P` treats an account
+    /// compared against one of them as an authority that must sign.
+    #[serde(default)]
+    pub authority_names: Vec<String>,
 }
 
 /// Returns `None` (never errors) if `Pinoc.toml` is missing, so callers can fall
