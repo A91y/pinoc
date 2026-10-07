@@ -2,6 +2,7 @@ use super::artifact::{
     check_built_artifact, enables_no_entrypoint, read_manifest, Rebuild, NO_ENTRYPOINT,
 };
 use super::build::{build_sbf, features_arg, split_features};
+use crate::config::Arch;
 use anyhow::{Context, Result};
 use std::io::Write;
 use std::process::Command;
@@ -10,6 +11,7 @@ pub fn run_test(
     quiet: bool,
     features: &[String],
     build_features: Option<&[String]>,
+    arch: Option<Arch>,
     no_build: bool,
 ) -> Result<()> {
     // SVM tests load target/deploy/*.so, which `cargo test` does not rebuild.
@@ -19,7 +21,7 @@ pub fn run_test(
             Some(explicit) => split_features(explicit),
             None => without_no_entrypoint(&split_features(features), manifest.as_ref()),
         };
-        build_sbf(quiet, &build_features)?;
+        build_sbf(quiet, &build_features, arch)?;
         check_built_artifact(
             manifest.as_ref(),
             Rebuild::Test {

@@ -19,6 +19,40 @@ pub struct PinocConfig {
     pub client: ClientConfig,
     #[serde(default)]
     pub check: CheckConfig,
+    #[serde(default)]
+    pub build: BuildConfig,
+}
+
+/// The SBPF version `cargo build-sbf --arch` builds for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum Arch {
+    V0,
+    V1,
+    V2,
+    V3,
+    V4,
+}
+
+impl Arch {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Arch::V0 => "v0",
+            Arch::V1 => "v1",
+            Arch::V2 => "v2",
+            Arch::V3 => "v3",
+            Arch::V4 => "v4",
+        }
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BuildConfig {
+    /// Passed to `cargo build-sbf --arch` by `pinoc build` and `pinoc test`.
+    /// Absent means the flag is not passed and the toolchain's default applies.
+    #[serde(default)]
+    pub arch: Option<Arch>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +111,15 @@ pub fn read_pinoc_config_optional() -> Result<Option<PinocConfig>> {
         return Ok(None);
     }
     Ok(Some(parse_pinoc_config(config_path)?))
+}
+
+/// `[build].arch` from `Pinoc.toml`, or `None` when the file or the key is absent.
+pub fn build_arch() -> Result<Option<Arch>> {
+    let config_path = Path::new("Pinoc.toml");
+    if !config_path.exists() {
+        return Ok(None);
+    }
+    Ok(parse_pinoc_config(config_path)?.build.arch)
 }
 
 fn parse_pinoc_config(config_path: &Path) -> Result<PinocConfig> {

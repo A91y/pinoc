@@ -189,6 +189,15 @@ pub fn check_entrypoint(
     anyhow::bail!(msg)
 }
 
+/// The SBPF version an ELF64 little-endian program was built for, which the
+/// toolchain records in `e_flags`. None if the bytes are not such a file.
+pub fn sbpf_version(elf: &[u8]) -> Option<u32> {
+    if elf.get(0..6)? != b"\x7fELF\x02\x01" {
+        return None;
+    }
+    Some(u32::from_le_bytes(elf.get(0x30..0x34)?.try_into().ok()?))
+}
+
 /// Whether an ELF64 little-endian binary's entry address (`e_entry`) falls inside an executable
 /// section, which is what the SBF loader requires. None if the bytes are not a parseable ELF64 LE file.
 fn has_entrypoint(elf: &[u8]) -> Option<bool> {

@@ -1,4 +1,5 @@
 use super::artifact::{check_built_artifact, read_manifest, Rebuild};
+use crate::config::{self, Arch};
 use crate::idl::{generate_idl, Generator};
 use anyhow::{Context, Result};
 use std::process::Command;
@@ -19,10 +20,19 @@ pub fn features_arg(features: &[String]) -> Option<String> {
     (!list.is_empty()).then(|| list.join(","))
 }
 
-pub fn build_sbf(quiet: bool, features: &[String]) -> Result<()> {
+/// `--arch` for `cargo build-sbf`: the flag, else `[build].arch` in `Pinoc.toml`.
+/// With neither, the flag is not passed and the toolchain's default applies.
+pub fn build_sbf(quiet: bool, features: &[String], arch: Option<Arch>) -> Result<()> {
+    let arch = match arch {
+        Some(arch) => Some(arch),
+        None => config::build_arch()?,
+    };
     println!("Building program");
     let mut cmd = Command::new("cargo");
     cmd.arg("build-sbf");
+    if let Some(arch) = arch {
+        cmd.arg("--arch").arg(arch.as_str());
+    }
     if let Some(features) = features_arg(features) {
         cmd.arg("--features").arg(features);
     }
@@ -41,10 +51,11 @@ pub fn build_sbf(quiet: bool, features: &[String]) -> Result<()> {
 pub fn run_build(
     quiet: bool,
     features: &[String],
+    arch: Option<Arch>,
     program_id: Option<&str>,
     idl_generator: Option<Generator>,
 ) -> Result<()> {
-    build_sbf(quiet, features)?;
+    build_sbf(quiet, features, arch)?;
     check_built_artifact(
         read_manifest().as_ref(),
         Rebuild::Build {

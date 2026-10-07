@@ -45,6 +45,12 @@ enum Commands {
         features: Vec<String>,
         #[arg(
             long,
+            value_enum,
+            help = "SBPF version to build for, passed to cargo build-sbf (default: [build].arch in Pinoc.toml, else the toolchain's)"
+        )]
+        arch: Option<config::Arch>,
+        #[arg(
+            long,
             help = "Program address override for IDL generation, for programs that don't use declare_id!"
         )]
         program_id: Option<String>,
@@ -65,6 +71,12 @@ enum Commands {
             help = "Space or comma separated list of features to activate (repeatable)"
         )]
         features: Vec<String>,
+        #[arg(
+            long,
+            value_enum,
+            help = "SBPF version to build for, passed to cargo build-sbf (default: [build].arch in Pinoc.toml, else the toolchain's)"
+        )]
+        arch: Option<config::Arch>,
         #[arg(
             long,
             help = "Skip the cargo build-sbf step and test against the existing target/deploy/*.so"
@@ -158,18 +170,32 @@ fn main() -> Result<()> {
         Commands::Build {
             quiet,
             features,
+            arch,
             program_id,
             idl_generator,
         } => {
-            commands::build::run_build(*quiet, features, program_id.as_deref(), *idl_generator)?;
+            commands::build::run_build(
+                *quiet,
+                features,
+                *arch,
+                program_id.as_deref(),
+                *idl_generator,
+            )?;
         }
         Commands::Test {
             quiet,
             features,
+            arch,
             no_build,
             build_features,
         } => {
-            commands::test::run_test(*quiet, features, build_features.as_deref(), *no_build)?;
+            commands::test::run_test(
+                *quiet,
+                features,
+                build_features.as_deref(),
+                *arch,
+                *no_build,
+            )?;
         }
         Commands::Deploy { cluster, wallet } => {
             commands::deploy::run_deploy(cluster.as_deref(), wallet.as_deref())?;

@@ -74,6 +74,7 @@ Common options:
 - `pinoc deploy --cluster <cluster> --wallet <path>`: override deployment settings
 - `pinoc build --program-id <ADDRESS>`: set the IDL program address for programs that don't call `declare_id!`
 - `pinoc build --features <FEATURES>` / `pinoc test --features <FEATURES>`: activate cargo features, passed to `cargo build-sbf` and `cargo test` (repeatable or comma-separated, like cargo's own flag)
+- `pinoc build --arch <v0|v1|v2|v3|v4>` / `pinoc test --arch <..>`: the SBPF version to build for, passed to `cargo build-sbf` (see [SBPF version](#sbpf-version))
 - `pinoc test --build-features <FEATURES>`: features for the pre-test SBF build when they differ from the test features (`""` for none)
 - `pinoc test --no-build`: skip the SBF build and test against the existing `target/deploy/*.so`
 - `pinoc client generate --language ts`: generate a TypeScript client (codama generator) into `clients/ts`
@@ -96,6 +97,19 @@ pinoc test --features test-default --build-features ""   # build with no feature
 ### Entrypoint check
 
 `pinoc build`, `pinoc test`, and `pinoc deploy` refuse an SBF artifact with no entrypoint (an ELF entry address outside its executable code, the same rule the SBF loader enforces), which is what `no-entrypoint` produces: it builds fine but contains no program, so no test can load it and a deploy would pay rent for an unusable program. The error names the cause (a build feature, the `default` feature, or a program with no entrypoint). `pinoc build` and `pinoc test` delete the bad artifact; `pinoc deploy` checks whatever it is about to upload, however it was built. Unlike `pinoc test`, `pinoc build` never drops a feature on its own: its features describe the artifact you asked for.
+
+### SBPF version
+
+`cargo build-sbf` builds for the SBPF version given by `--arch`, and for its own default when the flag is absent (`v0` in cargo-build-sbf 4.3). `pinoc build` and `pinoc test` pass `--arch` only when one is set, with the flag or in `Pinoc.toml`:
+
+```toml
+[build]
+arch = "v3"
+```
+
+The flag overrides the file. Setting it in the file keeps `pinoc build` and `pinoc test` on the same version; with the flag alone, a `pinoc test` run without it rebuilds the artifact for the toolchain's default.
+
+Which versions a cluster deploys is decided by two feature gates: one enables SBPFv3, and SIMD-0500 disables deployment of v0, v1 and v2. `solana-test-validator` 4.3 starts with both active, so it deploys only v3. Before uploading, `pinoc deploy` reads the artifact's version from its ELF header and asks the cluster for both gates (`solana feature status`), and stops if the cluster would reject the artifact, naming the `--arch` to rebuild with. If the cluster cannot be asked, the deploy goes ahead unchecked.
 
 ## Project structure
 
