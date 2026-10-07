@@ -88,6 +88,12 @@ enum Commands {
             help = "Features for the pre-test SBF build, if different from --features (\"\" for none)"
         )]
         build_features: Option<Vec<String>>,
+        #[arg(
+            last = true,
+            value_name = "CARGO_ARGS",
+            help = "Arguments for cargo test, e.g. `-- --test client -- --nocapture`"
+        )]
+        cargo_args: Vec<String>,
     },
     Deploy {
         #[arg(long, help = "Cluster override")]
@@ -188,6 +194,7 @@ fn main() -> Result<()> {
             arch,
             no_build,
             build_features,
+            cargo_args,
         } => {
             commands::test::run_test(
                 *quiet,
@@ -195,6 +202,7 @@ fn main() -> Result<()> {
                 build_features.as_deref(),
                 *arch,
                 *no_build,
+                cargo_args,
             )?;
         }
         Commands::Deploy { cluster, wallet } => {

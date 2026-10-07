@@ -1,4 +1,6 @@
+use crate::config::Arch;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -187,6 +189,124 @@ pub fn check_entrypoint(
         );
     }
     anyhow::bail!(msg)
+}
+
+/// What `pinoc build` or `pinoc test` built, kept beside the artifact as
+/// `<name>.build.json` so `pinoc test --no-build` can tell what it is testing.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct BuildRecord {
+    pub features: Vec<String>,
+    pub arch: Option<Arch>,
+    /// Length and FNV-1a hash of the artifact, to tell when something other
+    /// than pinoc has replaced it since.
+    len: u64,
+    hash: String,
+}
+
+/// Whether the artifact on disk is the one a `BuildRecord` describes.
+pub enum Recorded {
+    Yes(BuildRecord),
+    /// No record, or the artifact has changed since it was written.
+    No,
+}
+
+fn record_path(artifact: &Path) -> PathBuf {
+    artifact.with_extension("build.json")
+}
+
+fn fingerprint(bytes: &[u8]) -> (u64, String) {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in bytes {
+        hash = (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    (bytes.len() as u64, format!("{hash:016x}"))
+}
+
+fn normalized(features: &[String]) -> Vec<String> {
+    let mut features = features.to_vec();
+    features.sort();
+    features.dedup();
+    features
+}
+
+/// Records the features and arch the artifact was just built with.
+pub fn record_build(manifest: Option<&toml::Table>, features: &[String], arch: Option<Arch>) {
+    let Some(path) = manifest.and_then(artifact_path) else {
+        return;
+    };
+    let Ok(bytes) = std::fs::read(&path) else {
+        return;
+    };
+    let (len, hash) = fingerprint(&bytes);
+    let record = BuildRecord {
+        features: normalized(features),
+        arch,
+        len,
+        hash,
+    };
+    if let Ok(json) = serde_json::to_string_pretty(&record) {
+        let _ = std::fs::write(record_path(&path), json + "\n");
+    }
+}
+
+pub fn read_build_record(artifact: &Path) -> Recorded {
+    let read = || {
+        let record: BuildRecord =
+            serde_json::from_str(&std::fs::read_to_string(record_path(artifact)).ok()?).ok()?;
+        let (len, hash) = fingerprint(&std::fs::read(artifact).ok()?);
+        (record.len == len && record.hash == hash).then_some(record)
+    };
+    read().map_or(Recorded::No, Recorded::Yes)
+}
+
+/// For `pinoc test --no-build`: errors if the artifact was built with other
+/// features or another arch than this run would have built it with.
+pub fn check_build_matches(
+    manifest: Option<&toml::Table>,
+    build_features: &[String],
+    arch: Option<Arch>,
+) -> Result<()> {
+    let Some(path) = manifest.and_then(artifact_path) else {
+        return Ok(());
+    };
+    if !path.exists() {
+        return Ok(());
+    }
+    let record = match read_build_record(&path) {
+        Recorded::Yes(record) => record,
+        Recorded::No => {
+            println!(
+                "{} was not built by pinoc, or has been rebuilt since, so --no-build cannot tell which features and arch it has.",
+                path.display()
+            );
+            return Ok(());
+        }
+    };
+    let wanted = normalized(build_features);
+    if record.features == wanted && record.arch == arch {
+        return Ok(());
+    }
+    let describe = |features: &[String], arch: Option<Arch>| {
+        let features = if features.is_empty() {
+            "no features".to_string()
+        } else {
+            format!("--features {}", features.join(","))
+        };
+        match arch {
+            Some(arch) => format!("{features} and --arch {}", arch.as_str()),
+            None => features,
+        }
+    };
+    let mut expect = format!("--build-features \"{}\"", record.features.join(","));
+    if let Some(arch) = record.arch {
+        expect.push_str(&format!(" --arch {}", arch.as_str()));
+    }
+    anyhow::bail!(
+        "{} was built with {}, but this run would build it with {}. Drop --no-build to rebuild it, or pass {expect} if that is the artifact to test.",
+        path.display(),
+        describe(&record.features, record.arch),
+        describe(&wanted, arch)
+    )
 }
 
 /// The SBPF version an ELF64 little-endian program was built for, which the

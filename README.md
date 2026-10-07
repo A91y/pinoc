@@ -77,6 +77,7 @@ Common options:
 - `pinoc build --arch <v0|v1|v2|v3|v4>` / `pinoc test --arch <..>`: the SBPF version to build for, passed to `cargo build-sbf` (see [SBPF version](#sbpf-version))
 - `pinoc test --build-features <FEATURES>`: features for the pre-test SBF build when they differ from the test features (`""` for none)
 - `pinoc test --no-build`: skip the SBF build and test against the existing `target/deploy/*.so`
+- `pinoc test -- <CARGO_ARGS>`: everything after `--` goes to `cargo test` (`pinoc test -- --test client`, `pinoc test -- my_test -- --nocapture`)
 - `pinoc client generate --language ts`: generate a TypeScript client (codama generator) into `clients/ts`
 - `pinoc clean --no-preserve`: clean everything, including keypairs
 
@@ -93,6 +94,23 @@ pinoc test --features test-default --build-features ""   # build with no feature
 ```
 
 `--build-features` is used as given. Pass `--no-build` to skip the build when iterating on tests that don't load the `.so`.
+
+Arguments after `--` are handed to `cargo test` unchanged, after the features, so one target or one test can be run without leaving `pinoc test`:
+
+```bash
+pinoc test --features test-default -- --test client_roundtrip
+pinoc test --features test-default -- parses_the_fixture -- --exact --nocapture
+```
+
+### What `--no-build` tests
+
+`pinoc build` and `pinoc test` write `target/deploy/<name>.build.json` beside the artifact they build: its features, its `--arch`, and its length and hash. `pinoc test --no-build` reads it and stops if the artifact was built with other features or another arch than this run would have used, because tests run against it fail in ways that read as bugs in the program:
+
+```text
+Error: target/deploy/prog.so was built with --features devnet, but this run would build it with no features. Drop --no-build to rebuild it, or pass --build-features "devnet" if that is the artifact to test.
+```
+
+With `--no-build`, `--build-features` and `--arch` say which artifact is expected. If there is no record, or the artifact is not the one the record describes (built by `cargo build-sbf` directly, say), pinoc says it cannot tell what the artifact is and runs the tests.
 
 ### Entrypoint check
 

@@ -50,7 +50,7 @@ fi"#
 }
 
 /// A minimal ELF64 header plus one executable section holding the entry address.
-fn artifact(dir: &Path, sbpf_version: u32) {
+fn elf(sbpf_version: u32) -> Vec<u8> {
     let mut elf = vec![0u8; 0x40 + 0x40];
     elf[..6].copy_from_slice(b"\x7fELF\x02\x01");
     elf[0x18..0x20].copy_from_slice(&0x100u64.to_le_bytes());
@@ -61,8 +61,29 @@ fn artifact(dir: &Path, sbpf_version: u32) {
     elf[0x48..0x50].copy_from_slice(&0x4u64.to_le_bytes());
     elf[0x50..0x58].copy_from_slice(&0x100u64.to_le_bytes());
     elf[0x60..0x68].copy_from_slice(&0x10u64.to_le_bytes());
+    elf
+}
+
+fn artifact(dir: &Path, sbpf_version: u32) {
     std::fs::create_dir_all(dir.join("target/deploy")).unwrap();
-    std::fs::write(dir.join("target/deploy/prog.so"), elf).unwrap();
+    std::fs::write(dir.join("target/deploy/prog.so"), elf(sbpf_version)).unwrap();
+}
+
+/// A project named `prog` whose stand-in `cargo build-sbf` produces an artifact.
+fn buildable_project() -> PathBuf {
+    let dir = project(None);
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname = \"prog\"\n\n[features]\nno-entrypoint = []\ntest-default = [\"no-entrypoint\"]\ndevnet = []\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("built.so"), elf(0)).unwrap();
+    script(
+        &dir,
+        "cargo",
+        "echo \"cargo $*\" >> calls.log\nif [ \"$1\" = build-sbf ]; then mkdir -p target/deploy && cp built.so target/deploy/prog.so; fi",
+    );
+    dir
 }
 
 fn run(dir: &Path, args: &[&str]) -> Output {
@@ -203,4 +224,113 @@ fn deploy_goes_ahead_when_the_cluster_cannot_be_asked() {
     );
     assert!(run(&dir, &["deploy"]).status.success());
     assert!(calls(&dir).iter().any(|c| c.contains("program deploy")));
+}
+
+#[test]
+fn arguments_after_the_separator_reach_cargo_test() {
+    let dir = project(None);
+    assert!(run(&dir, &["test", "--no-build"]).status.success());
+    assert!(run(
+        &dir,
+        &[
+            "test",
+            "--no-build",
+            "-F",
+            "devnet",
+            "--",
+            "--test",
+            "client",
+            "parses"
+        ]
+    )
+    .status
+    .success());
+    assert!(run(
+        &dir,
+        &["test", "--no-build", "-q", "--", "--test", "client"]
+    )
+    .status
+    .success());
+    assert!(run(
+        &dir,
+        &["test", "--no-build", "-q", "--", "parses", "--", "--exact"]
+    )
+    .status
+    .success());
+    assert_eq!(
+        calls(&dir),
+        [
+            "cargo test",
+            "cargo test --features devnet --test client parses",
+            "cargo test --test client -- --quiet",
+            "cargo test parses -- --exact --quiet",
+        ]
+    );
+}
+
+#[test]
+fn no_build_refuses_an_artifact_built_with_other_features() {
+    let dir = buildable_project();
+    assert!(run(&dir, &["build", "-F", "devnet"]).status.success());
+    let record = common::read_json(&dir.join("target/deploy/prog.build.json"));
+    assert_eq!(record["features"], serde_json::json!(["devnet"]));
+    assert_eq!(record["arch"], serde_json::Value::Null);
+
+    let out = run(&dir, &["test", "-F", "test-default", "--no-build"]);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(
+        err.contains("target/deploy/prog.so was built with --features devnet, but this run would build it with no features")
+            && err.contains("Drop --no-build")
+            && err.contains("--build-features \"devnet\""),
+        "{err}"
+    );
+    assert!(!calls(&dir).iter().any(|c| c.starts_with("cargo test")));
+
+    for args in [
+        &["test", "-F", "test-default,devnet", "--no-build"][..],
+        &[
+            "test",
+            "-F",
+            "test-default",
+            "--no-build",
+            "--build-features",
+            "devnet",
+        ],
+    ] {
+        let out = run(&dir, args);
+        assert!(out.status.success(), "{}", stderr(&out));
+        assert!(!stdout(&out).contains("not built by pinoc"));
+    }
+}
+
+#[test]
+fn no_build_refuses_an_artifact_built_for_another_arch() {
+    let dir = buildable_project();
+    assert!(run(&dir, &["test", "--arch", "v3"]).status.success());
+    let out = run(&dir, &["test", "--no-build"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("was built with no features and --arch v3, but this run would build it with no features."),
+        "{}",
+        stderr(&out)
+    );
+    assert!(run(&dir, &["test", "--no-build", "--arch", "v3"])
+        .status
+        .success());
+}
+
+#[test]
+fn no_build_says_when_it_cannot_tell_what_the_artifact_is() {
+    let dir = buildable_project();
+    artifact(&dir, 0);
+    let out = run(&dir, &["test", "-F", "test-default", "--no-build"]);
+    assert!(out.status.success());
+    assert!(stdout(&out).contains("target/deploy/prog.so was not built by pinoc"));
+
+    assert!(run(&dir, &["build", "-F", "devnet"]).status.success());
+    artifact(&dir, 3);
+    let out = run(&dir, &["test", "-F", "test-default", "--no-build"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("or has been rebuilt since"));
 }

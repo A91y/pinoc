@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `pinoc test -- <args>` hands everything after `--` to `cargo test`, so one target or one test can be run (`pinoc test -- --test client`, `pinoc test -- my_test -- --nocapture`). `pinoc test` took no such arguments, so running part of a suite meant calling `cargo test` directly and losing the SBF build that goes with it.
+- `pinoc build` and `pinoc test` record what they built in `target/deploy/<name>.build.json`: the features, the `--arch`, and the artifact's length and hash.
+
+### Changed
+- `pinoc test --no-build` stops when the artifact was built with other features or another `--arch` than the run would have built it with, and names both. It used to test whatever was in `target/deploy`, so a `devnet` artifact tested as a default build failed with the program's own errors. `--build-features` and `--arch` given with `--no-build` name the artifact that is expected. When there is no record for the artifact, or it has been rebuilt by something else since, pinoc prints that it cannot tell and runs the tests.
+
 ## [0.3.5] - 2026-10-08
 
 ### Added

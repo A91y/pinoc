@@ -1,7 +1,8 @@
 use super::artifact::{
-    check_built_artifact, enables_no_entrypoint, read_manifest, Rebuild, NO_ENTRYPOINT,
+    check_build_matches, check_built_artifact, enables_no_entrypoint, read_manifest, record_build,
+    Rebuild, NO_ENTRYPOINT,
 };
-use super::build::{build_sbf, features_arg, split_features};
+use super::build::{build_sbf, features_arg, resolve_arch, split_features};
 use crate::config::Arch;
 use anyhow::{Context, Result};
 use std::io::Write;
@@ -13,14 +14,18 @@ pub fn run_test(
     build_features: Option<&[String]>,
     arch: Option<Arch>,
     no_build: bool,
+    cargo_args: &[String],
 ) -> Result<()> {
+    let arch = resolve_arch(arch)?;
+    let manifest = read_manifest();
+    let build_features = match build_features {
+        Some(explicit) => split_features(explicit),
+        None => without_no_entrypoint(&split_features(features), manifest.as_ref(), !no_build),
+    };
     // SVM tests load target/deploy/*.so, which `cargo test` does not rebuild.
-    if !no_build {
-        let manifest = read_manifest();
-        let build_features = match build_features {
-            Some(explicit) => split_features(explicit),
-            None => without_no_entrypoint(&split_features(features), manifest.as_ref()),
-        };
+    if no_build {
+        check_build_matches(manifest.as_ref(), &build_features, arch)?;
+    } else {
         build_sbf(quiet, &build_features, arch)?;
         check_built_artifact(
             manifest.as_ref(),
@@ -29,6 +34,7 @@ pub fn run_test(
                 build_features: &build_features,
             },
         )?;
+        record_build(manifest.as_ref(), &build_features, arch);
     }
 
     println!("Testing program");
@@ -37,8 +43,12 @@ pub fn run_test(
     if let Some(features) = features_arg(features) {
         cmd.arg("--features").arg(features);
     }
+    cmd.args(cargo_args);
     if quiet {
-        cmd.arg("--").arg("--quiet");
+        if !cargo_args.iter().any(|a| a == "--") {
+            cmd.arg("--");
+        }
+        cmd.arg("--quiet");
     }
 
     let status = if quiet {
@@ -62,7 +72,11 @@ pub fn run_test(
     Ok(())
 }
 
-fn without_no_entrypoint(features: &[String], manifest: Option<&toml::Table>) -> Vec<String> {
+fn without_no_entrypoint(
+    features: &[String],
+    manifest: Option<&toml::Table>,
+    announce: bool,
+) -> Vec<String> {
     let Some(manifest) = manifest else {
         return features.to_vec();
     };
@@ -70,7 +84,7 @@ fn without_no_entrypoint(features: &[String], manifest: Option<&toml::Table>) ->
         .iter()
         .cloned()
         .partition(|f| enables_no_entrypoint(f, manifest));
-    if !dropped.is_empty() {
+    if announce && !dropped.is_empty() {
         let names = dropped
             .iter()
             .map(|f| format!("`{f}`"))

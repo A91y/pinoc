@@ -1,4 +1,4 @@
-use super::artifact::{check_built_artifact, read_manifest, Rebuild};
+use super::artifact::{check_built_artifact, read_manifest, record_build, Rebuild};
 use crate::config::{self, Arch};
 use crate::idl::{generate_idl, Generator};
 use anyhow::{Context, Result};
@@ -22,11 +22,14 @@ pub fn features_arg(features: &[String]) -> Option<String> {
 
 /// `--arch` for `cargo build-sbf`: the flag, else `[build].arch` in `Pinoc.toml`.
 /// With neither, the flag is not passed and the toolchain's default applies.
+pub fn resolve_arch(arch: Option<Arch>) -> Result<Option<Arch>> {
+    match arch {
+        Some(arch) => Ok(Some(arch)),
+        None => config::build_arch(),
+    }
+}
+
 pub fn build_sbf(quiet: bool, features: &[String], arch: Option<Arch>) -> Result<()> {
-    let arch = match arch {
-        Some(arch) => Some(arch),
-        None => config::build_arch()?,
-    };
     println!("Building program");
     let mut cmd = Command::new("cargo");
     cmd.arg("build-sbf");
@@ -55,13 +58,17 @@ pub fn run_build(
     program_id: Option<&str>,
     idl_generator: Option<Generator>,
 ) -> Result<()> {
+    let arch = resolve_arch(arch)?;
+    let manifest = read_manifest();
+    let build_features = split_features(features);
     build_sbf(quiet, features, arch)?;
     check_built_artifact(
-        read_manifest().as_ref(),
+        manifest.as_ref(),
         Rebuild::Build {
-            build_features: &split_features(features),
+            build_features: &build_features,
         },
     )?;
+    record_build(manifest.as_ref(), &build_features, arch);
 
     if let Err(e) = generate_idl("target/idl", program_id, idl_generator) {
         let full_message = e

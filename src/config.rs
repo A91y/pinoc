@@ -3,7 +3,7 @@
 //! the name.
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
@@ -24,7 +24,7 @@ pub struct PinocConfig {
 }
 
 /// The SBPF version `cargo build-sbf --arch` builds for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Arch {
     V0,
