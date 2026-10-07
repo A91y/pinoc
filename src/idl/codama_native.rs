@@ -190,6 +190,12 @@ fn item_has_codama_derive(item: &Item) -> bool {
         Item::Enum(e) => &e.attrs,
         _ => return false,
     };
+    derives(attrs, CODAMA_DERIVES)
+}
+
+/// Whether `attrs` derive any of `names`, written bare or qualified
+/// (`CodamaAccount` or `codama::CodamaAccount`).
+fn derives(attrs: &[syn::Attribute], names: &[&str]) -> bool {
     attrs.iter().any(|attr| {
         if !attr.path().is_ident("derive") {
             return false;
@@ -199,11 +205,10 @@ fn item_has_codama_derive(item: &Item) -> bool {
         else {
             return false;
         };
-        // Matches `CodamaAccount` and the qualified `codama::CodamaAccount`.
         paths.iter().any(|p| {
             p.segments
                 .last()
-                .is_some_and(|seg| CODAMA_DERIVES.iter().any(|name| seg.ident == name))
+                .is_some_and(|seg| names.iter().any(|name| seg.ident == name))
         })
     })
 }
@@ -262,9 +267,29 @@ pub fn extract_native_codama_idl(
     }
 
     if has_native_errors {
+        // Each node named by an override is given its variant's name while codes
+        // and messages are paired by variant, then the name that was asked for.
+        let directives = error_directives(src_dir)?;
+        let renames = pair_error_names(&mut value["program"]["errors"], &directives.names)?;
         backfill_messages(&mut value["program"]["errors"], fallback_errors);
         if let Some(manual) = manual.filter(|m| m.changes_codes()) {
             convert_discriminant_codes(&mut value["program"]["errors"], manual);
+        }
+        if !renames.is_empty() {
+            for (index, name) in &renames {
+                value["program"]["errors"][*index]["name"] = Value::from(name.as_str());
+            }
+            println!(
+                "ℹ️  {} error name(s) in .codama.json taken from `#[codama(name = \"..\")]`",
+                renames.len()
+            );
+        }
+        if !directives.skipped.is_empty() {
+            println!(
+                "ℹ️  {} error variant(s) left out of .codama.json by `#[codama(skip)]`: {}",
+                directives.skipped.len(),
+                directives.skipped.join(", ")
+            );
         }
     }
     if fills_errors {
@@ -322,6 +347,138 @@ fn restore_empty_lists(value: &mut Value) {
         Value::Array(items) => items.iter_mut().for_each(restore_empty_lists),
         _ => {}
     }
+}
+
+/// `(variant, name)` for each variant of a `CodamaErrors` enum that carries
+/// `#[codama(name = "..")]`. Codama applies the attribute but passes the value
+/// through its own camelCase conversion, so `name = "notAMint"` still comes out
+/// as `notAmint`; this is what lets the name be kept as written.
+///
+/// Errors if a name would collide with another variant of the same enum, which
+/// Codama resolves by silently keeping one of the two errors.
+fn error_directives(src_dir: &Path) -> Result<ErrorDirectives> {
+    fn collect(items: &[Item], out: &mut ErrorDirectives) -> Result<()> {
+        for item in items {
+            match item {
+                Item::Mod(m) => {
+                    if let Some((_, inner)) = &m.content {
+                        collect(inner, out)?;
+                    }
+                }
+                Item::Enum(e) if derives(&e.attrs, &["CodamaErrors"]) => {
+                    // A skipped variant has no node, so its name names nothing
+                    // and cannot collide.
+                    let (skipped, kept): (Vec<_>, Vec<_>) = e
+                        .variants
+                        .iter()
+                        .partition(|v| codama_directive(&v.attrs).skip);
+                    out.skipped
+                        .extend(skipped.iter().map(|v| v.ident.to_string()));
+                    let variants: Vec<(String, Option<String>)> = kept
+                        .iter()
+                        .map(|v| (v.ident.to_string(), codama_directive(&v.attrs).name))
+                        .collect();
+                    for (index, (variant, name)) in variants.iter().enumerate() {
+                        let Some(name) = name else {
+                            continue;
+                        };
+                        let collision = variants.iter().enumerate().find(|(i, (ident, other))| {
+                            *i != index
+                                && name_key(other.as_ref().unwrap_or(ident)) == name_key(name)
+                        });
+                        if let Some((_, (other, _))) = collision {
+                            anyhow::bail!(
+                                "`#[codama(name = \"{name}\")]` on error variant `{variant}` collides with variant `{other}`; Codama would keep only one of the two errors"
+                            );
+                        }
+                        out.names.push((variant.clone(), name.clone()));
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    let _ = collect_sources(src_dir, &mut files);
+    let mut out = ErrorDirectives::default();
+    for (_, src) in files {
+        if let Ok(file) = syn::parse_file(&src) {
+            collect(&file.items, &mut out)?;
+        }
+    }
+    Ok(out)
+}
+
+/// What the `#[codama(..)]` attributes on `CodamaErrors` variants ask for.
+#[derive(Default)]
+struct ErrorDirectives {
+    /// `(variant, name)` for each `name = ".."`.
+    names: Vec<(String, String)>,
+    /// Variants carrying `skip`.
+    skipped: Vec<String>,
+}
+
+#[derive(Default)]
+struct CodamaDirective {
+    name: Option<String>,
+    skip: bool,
+}
+
+/// The `name = ".."` and `skip` of an item's `#[codama(..)]` attributes.
+fn codama_directive(attrs: &[syn::Attribute]) -> CodamaDirective {
+    let mut out = CodamaDirective::default();
+    for attr in attrs.iter().filter(|a| a.path().is_ident("codama")) {
+        let _ = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("name") {
+                out.name = Some(meta.value()?.parse::<syn::LitStr>()?.value());
+            } else if meta.path.is_ident("skip") {
+                out.skip = true;
+            } else if meta.input.peek(Token![=]) {
+                meta.value()?.parse::<syn::Expr>()?;
+            } else if meta.input.peek(syn::token::Paren) {
+                let content;
+                syn::parenthesized!(content in meta.input);
+                content.parse::<proc_macro2::TokenStream>()?;
+            }
+            Ok(())
+        });
+    }
+    out
+}
+
+/// Finds the error node each override applies to (Codama has already named it
+/// from the override, re-cased) and names it after its variant for now, so the
+/// code and message steps can pair it. Returns `(node index, name as written)`.
+fn pair_error_names(
+    errors: &mut Value,
+    overrides: &[(String, String)],
+) -> Result<Vec<(usize, String)>> {
+    let Some(nodes) = errors.as_array_mut() else {
+        return Ok(Vec::new());
+    };
+    let mut renames = Vec::new();
+    for (variant, name) in overrides {
+        let camel_case = name.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+            && name.chars().all(|c| c.is_ascii_alphanumeric());
+        if !camel_case {
+            anyhow::bail!(
+                "`#[codama(name = \"{name}\")]` on error variant `{variant}` is not a camelCase name (a lowercase letter, then letters and digits)"
+            );
+        }
+        let key = name_key(name);
+        let mut matching = nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, node)| name_key(node["name"].as_str().unwrap_or_default()) == key)
+            .map(|(index, _)| index);
+        // A variant Codama skipped has no node.
+        if let (Some(index), None) = (matching.next(), matching.next()) {
+            nodes[index]["name"] = Value::from(variant.as_str());
+            renames.push((index, name.clone()));
+        }
+    }
+    Ok(renames)
 }
 
 /// Lowercased alphanumerics of a name. Pairs a Rust variant with Codama's

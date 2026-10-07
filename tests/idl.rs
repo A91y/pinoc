@@ -276,3 +276,120 @@ fn codama_0_13_directives_and_restored_empty_lists() {
     assert_eq!(tiers["type"]["kind"], "arrayTypeNode");
     assert_eq!(tiers["type"]["count"]["value"], 4);
 }
+
+#[test]
+fn an_error_variant_can_be_named_explicitly() {
+    let (out, errors) = native_errors(&format!(
+        "
+#[derive(codama::CodamaErrors)]
+pub enum MyError {{
+    InvalidAuthority,
+    #[codama(name = \"notAMint\")]
+    NotAMint,
+    IsATarget,
+}}
+{OFFSET_FROM}"
+    ));
+    // The named variant takes its name; the others keep Codama's conversion.
+    // Codes and messages stay paired with their variants.
+    assert_eq!(
+        errors,
+        [
+            (
+                "invalidAuthority".to_string(),
+                6000,
+                "Invalid Authority".to_string()
+            ),
+            ("notAMint".to_string(), 6001, "Not A Mint".to_string()),
+            ("isAtarget".to_string(), 6002, "Is A Target".to_string()),
+        ]
+    );
+    assert!(
+        out.contains("1 error name(s) in .codama.json taken from"),
+        "{out}"
+    );
+
+    // A name that is a different word altogether keeps its code and message.
+    let (_, errors) = native_errors(&format!(
+        "
+#[derive(codama::CodamaErrors)]
+pub enum MyError {{
+    InvalidAuthority,
+    #[codama(name = \"wrongKindOfMint\")]
+    NotAMint = 80,
+}}
+{OFFSET_FROM}"
+    ));
+    assert_eq!(
+        errors[1],
+        (
+            "wrongKindOfMint".to_string(),
+            6080,
+            "Not A Mint".to_string()
+        )
+    );
+}
+
+#[test]
+fn an_unusable_error_name_is_refused() {
+    for (variants, expected) in [
+        (
+            "#[codama(name = \"Not A Mint\")]\n    NotAMint,",
+            "is not a camelCase name",
+        ),
+        (
+            "First,\n    #[codama(name = \"first\")]\n    Second,",
+            "collides with variant `First`",
+        ),
+        (
+            "#[codama(name = \"same\")]\n    First,\n    #[codama(name = \"same\")]\n    Second,",
+            "collides with variant",
+        ),
+    ] {
+        let dir = temp_copy("idl_codama_errors");
+        let source = format!(
+            "pinocchio::address::declare_id!(\"EfPyA5fx11YAY9XwmrWVddcQe5bBZeNsKA8avqYUH6Qr\");\n#[derive(codama::CodamaErrors)]\npub enum MyError {{\n    {variants}\n}}\n"
+        );
+        std::fs::write(dir.join("src/lib.rs"), source).unwrap();
+        let out = pinoc(&dir, &["idl"]);
+        assert!(!out.status.success(), "{variants}");
+        assert!(
+            common::stderr(&out).contains(expected),
+            "{variants}: {}",
+            common::stderr(&out)
+        );
+    }
+}
+
+#[test]
+fn a_skipped_error_variant_is_reported() {
+    let (out, errors) = native_errors(&format!(
+        "
+#[derive(codama::CodamaErrors)]
+pub enum MyError {{
+    InvalidAuthority,
+    #[codama(skip)]
+    #[codama(name = \"notAMint\")]
+    NotAMint,
+    IsATarget,
+}}
+{OFFSET_FROM}"
+    ));
+    // The variant is left out, its name with it, and the codes around it stay put.
+    assert_eq!(
+        errors,
+        [
+            (
+                "invalidAuthority".to_string(),
+                6000,
+                "Invalid Authority".to_string()
+            ),
+            ("isAtarget".to_string(), 6002, "Is A Target".to_string()),
+        ]
+    );
+    assert!(
+        out.contains("1 error variant(s) left out of .codama.json by `#[codama(skip)]`: NotAMint"),
+        "{out}"
+    );
+    assert!(!out.contains("error name(s) in .codama.json"), "{out}");
+}

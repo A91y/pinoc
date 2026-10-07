@@ -88,6 +88,22 @@ Codes are the values the program returns, not the raw discriminants: `pinoc` eva
 
 Native Codama extraction only sees enums deriving `CodamaErrors`. When it finds none, `pinoc` fills `program.errors` in `<name>.codama.json` from the error list of `<name>.json` (thiserror-derived or the manual fallback above), so choosing the native path never drops errors the shank path reports. Errors Codama extracted itself are never replaced. Codama emits an empty message for an error without an `#[error("..")]` attribute; those are filled from the same list.
 
+**Error names.** Codama derives an error's name from its variant, and its conversion to camelCase does not keep a one-letter word or an acronym apart: `NotAMint` becomes `notAmint` and `HTTPTimeout` becomes `httptimeout`, which a client then exports as `NOT_AMINT` and `HTTPTIMEOUT`. No conversion is right for every such name, so set the one you want on the variant:
+
+```rust
+#[derive(CodamaErrors)]
+pub enum MyError {
+    #[codama(name = "notAMint")]
+    NotAMint,
+}
+```
+
+Codama applies `name` on an error variant but passes the value through the same conversion, so `name = "notAMint"` still comes out as `notAmint`. `pinoc` writes the name to `<name>.codama.json` as you spelled it, keeping the variant's code and message. The name must be camelCase. One that collides with another variant of the enum is refused: Codama would otherwise keep only one of the two errors, without saying so. Variants without `name` keep Codama's conversion.
+
+This applies to error variants only. `name` on an account, a type, a field or an instruction argument is left as Codama writes it, re-cased (`#[codama(account(name = "notAMint"))]` gives `notAmint`): those names are referred to from other nodes (links, PDA seeds, instruction account defaults), so changing one after extraction would leave the references pointing at a name that no longer exists. An error name is referred to by nothing else. `pinoc idl` prints how many error names it took from `name`; a `name` it prints nothing about was left to Codama.
+
+A variant with `#[codama(skip)]` is left out of `<name>.codama.json`, and a `name` on it names nothing. The codes of the other variants do not move. `pinoc idl` lists the variants left out this way.
+
 ## Constants
 
 Neither extractor can declare a program constant from source (Codama has a `constantNode` but no directive that builds one), so `pinoc` exports a `const` that carries a marker comment directly above it:
