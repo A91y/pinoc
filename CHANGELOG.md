@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-07
+
 ### Added
 - `[check] authority_names` in `Pinoc.toml` lists names `ACC002-P` treats as an authority that must sign, in addition to `authority`, `admin`, `auth` and names ending in `_authority` or `_auth`. A program whose privileged signer is called `keeper` or `operator` was not covered: an address compared against `config.keeper` with no signer check produced nothing.
 - `pinoc idl` lists the `CodamaErrors` variants left out of `<name>.codama.json` by `#[codama(skip)]`. A skipped variant, and a `name` set on it, used to disappear with nothing printed.
