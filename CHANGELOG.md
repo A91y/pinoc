@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-10-08
+
 ### Added
 - `pinoc test -- <args>` hands everything after `--` to `cargo test`, so one target or one test can be run (`pinoc test -- --test client`, `pinoc test -- my_test -- --nocapture`). `pinoc test` took no such arguments, so running part of a suite meant calling `cargo test` directly and losing the SBF build that goes with it.
 - `pinoc build` and `pinoc test` record what they built in `target/deploy/<name>.build.json`: the features, the `--arch`, and the artifact's length and hash.
