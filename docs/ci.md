@@ -4,7 +4,7 @@
 
 From 0.4.0, each GitHub release has prebuilt binaries attached for Linux (x86_64, aarch64) and macOS (x86_64, aarch64), so CI does not have to compile pinoc.
 
-The repository is a GitHub Action that installs a pinned version:
+The repository is a GitHub Action, [Setup pinoc on the GitHub Marketplace](https://github.com/marketplace/actions/setup-pinoc), that installs a pinned version:
 
 ```yaml
 - uses: a91y/pinoc@v0.4.0

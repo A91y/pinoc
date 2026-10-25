@@ -79,7 +79,7 @@ pinoc verify            # check the deployed bytes are what you built
 - [Clusters, deploying and keys](docs/deploy.md): per-cluster builds, the program keypair, `pinoc verify`
 - [IDL generation](docs/idl.md) and [client generation](docs/clients.md): shank and Codama programs, TypeScript
 - [`pinoc check`](docs/check.md) and [the lint codes](docs/lints/): what is checked, configuration, output formats
-- [CI](docs/ci.md): the setup action, prebuilt binaries, a workflow
+- [CI](docs/ci.md): the [setup action](https://github.com/marketplace/actions/setup-pinoc), prebuilt binaries, a workflow
 - [Configuration](docs/configuration.md): every `Pinoc.toml` key
 
 ## Prerequisites
