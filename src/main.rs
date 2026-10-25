@@ -45,6 +45,11 @@ enum Commands {
         features: Vec<String>,
         #[arg(
             long,
+            help = "Build for this `[clusters.<name>]` in Pinoc.toml, adding its features"
+        )]
+        cluster: Option<String>,
+        #[arg(
+            long,
             value_enum,
             help = "SBPF version to build for, passed to cargo build-sbf (default: [build].arch in Pinoc.toml, else the toolchain's)"
         )]
@@ -73,6 +78,17 @@ enum Commands {
         features: Vec<String>,
         #[arg(
             long,
+            help = "Build and test for this `[clusters.<name>]` in Pinoc.toml, adding its features"
+        )]
+        cluster: Option<String>,
+        #[arg(
+            long,
+            conflicts_with_all = ["cluster", "no_build"],
+            help = "Run the tests once for each `[clusters]` entry in Pinoc.toml (once per distinct feature set)"
+        )]
+        all_clusters: bool,
+        #[arg(
+            long,
             value_enum,
             help = "SBPF version to build for, passed to cargo build-sbf (default: [build].arch in Pinoc.toml, else the toolchain's)"
         )]
@@ -96,10 +112,36 @@ enum Commands {
         cargo_args: Vec<String>,
     },
     Deploy {
-        #[arg(long, help = "Cluster override")]
+        #[arg(
+            long,
+            help = "A `[clusters.<name>]` in Pinoc.toml, or a URL or moniker for solana --url (default: [provider].cluster)"
+        )]
         cluster: Option<String>,
         #[arg(long, help = "Wallet override")]
         wallet: Option<String>,
+        #[arg(
+            long,
+            help = "The program's keypair (default: [provider].program_keypair, else target/deploy/<name>-keypair.json)"
+        )]
+        program_keypair: Option<String>,
+        #[arg(
+            long,
+            help = "Upgrade authority keypair, passed to solana program deploy (default: from Pinoc.toml, else the wallet)"
+        )]
+        upgrade_authority: Option<String>,
+    },
+    /// Compare the deployed program with the local artifact.
+    Verify {
+        #[arg(
+            long,
+            help = "A `[clusters.<name>]` in Pinoc.toml, or a URL or moniker for solana --url (default: [provider].cluster)"
+        )]
+        cluster: Option<String>,
+        #[arg(
+            long,
+            help = "The program's address (default: the one declared under src/)"
+        )]
+        program_id: Option<String>,
     },
     Clean {
         #[arg(long, help = "Remove all files including keypair files")]
@@ -118,10 +160,9 @@ enum Commands {
     Idl {
         #[arg(
             long,
-            help = "Output directory for the IDL JSON",
-            default_value = "target/idl"
+            help = "Output directory for the IDL JSON [default: [idl].out_dir in Pinoc.toml, else target/idl]"
         )]
-        out_dir: String,
+        out_dir: Option<String>,
         #[arg(
             long,
             help = "Program address to use, for programs that don't call declare_id!"
@@ -133,6 +174,11 @@ enum Commands {
             help = "Force the .codama.json generator instead of auto-detecting Codama macros"
         )]
         idl_generator: Option<Generator>,
+        #[arg(
+            long,
+            help = "Write nothing; exit nonzero if the IDL in the output directory differs from the source"
+        )]
+        check: bool,
     },
     Client {
         #[command(subcommand)]
@@ -176,37 +222,62 @@ fn main() -> Result<()> {
         Commands::Build {
             quiet,
             features,
+            cluster,
             arch,
             program_id,
             idl_generator,
         } => {
-            commands::build::run_build(
-                *quiet,
+            commands::build::run_build(commands::build::BuildArgs {
+                quiet: *quiet,
                 features,
-                *arch,
-                program_id.as_deref(),
-                *idl_generator,
-            )?;
+                cluster: cluster.as_deref(),
+                arch: *arch,
+                program_id: program_id.as_deref(),
+                idl_generator: *idl_generator,
+            })?;
         }
         Commands::Test {
             quiet,
             features,
+            cluster,
+            all_clusters,
             arch,
             no_build,
             build_features,
             cargo_args,
         } => {
-            commands::test::run_test(
-                *quiet,
+            commands::test::run_test(commands::test::TestArgs {
+                quiet: *quiet,
                 features,
-                build_features.as_deref(),
-                *arch,
-                *no_build,
+                build_features: build_features.as_deref(),
+                cluster: cluster.as_deref(),
+                all_clusters: *all_clusters,
+                arch: *arch,
+                no_build: *no_build,
                 cargo_args,
-            )?;
+            })?;
         }
-        Commands::Deploy { cluster, wallet } => {
-            commands::deploy::run_deploy(cluster.as_deref(), wallet.as_deref())?;
+        Commands::Deploy {
+            cluster,
+            wallet,
+            program_keypair,
+            upgrade_authority,
+        } => {
+            commands::deploy::run_deploy(commands::deploy::DeployArgs {
+                cluster: cluster.as_deref(),
+                wallet: wallet.as_deref(),
+                program_keypair: program_keypair.as_deref(),
+                upgrade_authority: upgrade_authority.as_deref(),
+            })?;
+        }
+        Commands::Verify {
+            cluster,
+            program_id,
+        } => {
+            commands::deploy::run_verify(commands::deploy::VerifyArgs {
+                cluster: cluster.as_deref(),
+                program_id: program_id.as_deref(),
+            })?;
         }
         Commands::Clean { no_preserve } => {
             commands::clean::clean_project(*no_preserve)?;
@@ -229,8 +300,14 @@ fn main() -> Result<()> {
             out_dir,
             program_id,
             idl_generator,
+            check,
         } => {
-            commands::idl::run_idl(out_dir, program_id.as_deref(), *idl_generator)?;
+            commands::idl::run_idl(
+                out_dir.as_deref(),
+                program_id.as_deref(),
+                *idl_generator,
+                *check,
+            )?;
         }
         Commands::Client { command } => match command {
             ClientCommands::Generate {
@@ -242,12 +319,14 @@ fn main() -> Result<()> {
                 yes,
                 with_cpi,
                 no_cpi,
+                check,
             } => {
                 commands::client::generate_client(commands::client::GenerateArgs {
-                    idl_dir,
+                    idl_dir: idl_dir.as_deref(),
                     out_dir: out_dir.as_deref(),
                     generator: *generator,
                     language: *language,
+                    check: *check,
                     auto_install: *auto_install,
                     yes: *yes,
                     with_cpi: *with_cpi,

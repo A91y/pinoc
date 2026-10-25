@@ -56,6 +56,7 @@ Codes are namespaced by category:
 - **ACC** - account validation (owner, signer, key, discriminator).
 - **CPI** - cross-program invocation and account lifecycle.
 - **ZC** - zero-copy memory layout.
+- **DISC** - discriminator constants.
 
 Each finding also carries a **severity** (`deny` fails the check, `warn` is advisory, `info`), a **confidence** (`heuristic` < `likely` < `definite`), and a backend (`syn` today).
 
@@ -70,8 +71,29 @@ Each finding also carries a **severity** (`deny` fails the check, `warn` is advi
 | `ZC001-P` | `layout-padding-mismatch` | warn | likely | A `#[repr(C)]` `ShankAccount`/`ShankType` struct whose padded in-memory layout differs from its packed borsh layout, so on-chain zero-copy reads and client (de)serialization disagree. Advisory because it only affects the generated borsh client; a program driven another way is unaffected. Reuses the layout analysis behind the `pinoc build`/`pinoc idl` padding warning. Fix: add explicit `_padding: [u8; N]` fields, or `--deny ZC001-P` to make it blocking. |
 | `ZC002-P` | `unchecked-length-before-cast` | deny | likely | An account whose data is borrowed through an `*_unchecked` accessor (`borrow_data_unchecked`/`borrow_mut_data_unchecked`) with no `data_len()` guard on that account, so a shorter-than-expected account is read past its end. Runs on the per-account fact table (`facts/`); if the account's `data_len()` is read anywhere in the handler it is treated as guarded, and a delegated account is left alone. Fix: check `data_len() >= size_of::<T>()` before the unchecked borrow. |
 | `ZC003-P` | `missing-repr-c` | deny | definite | A `ShankAccount`/`ShankType` struct read zero-copy without `#[repr(C)]` or `#[repr(transparent)]`. The default layout may reorder fields and break the byte mapping the client relies on. Fix: add `#[repr(C)]`. |
+| `DISC001-P` | `wrong-discriminator` | deny | definite | A discriminator constant, marked with `// pinoc:discriminator(..)` or `// pinoc:discriminators(..)`, whose bytes are not the leading bytes of the SHA-256 of the preimage it names. Also reported when the marker cannot be checked (the enum is not in the file, the table and the enum differ in length, a value is not a byte array literal), with the reason. Fix: the finding gives the right bytes. See [Discriminator constants](#discriminator-constants). |
 
 The struct-layout lints (`ZC001-P`, `ZC003-P`) anchor their finding at the struct's first attribute, so a suppression comment written directly above the item covers it. The flow lints (`ACC001-P`, `ACC002-P`, `ACC003-P`, `ZC002-P`, `CPI001-P`) anchor at the offending statement.
+
+### Discriminator constants
+
+A program that writes Anchor-style discriminators (`sha256("event:Name")[..8]`, `sha256("account:Name")[..8]`, `sha256("global:snake_name")[..8]`) as byte literals can mark them, and `DISC001-P` recomputes each one. A marker goes in a `//` comment directly above the `const`, or among its doc comments and attributes:
+
+```rust
+// pinoc:discriminator("account:Vault")
+pub const VAULT_DISCRIMINATOR: [u8; 8] = [211, 8, 232, 43, 2, 152, 117, 119];
+
+pub enum EventKind { VaultDeposit = 0, WithdrawRequested = 1, /* .. */ }
+
+// pinoc:discriminators("event:", EventKind)
+const DISCRIMINATORS: [[u8; 8]; 25] = [
+    [4, 248, 234, 163, 99, 238, 140, 45],   // VaultDeposit
+    [114, 16, 240, 206, 93, 128, 151, 39],  // WithdrawRequested
+    // ..
+];
+```
+
+In the table form, row `i` is checked against the variant of the enum whose discriminant is `i` (the declared value, or one more than the previous variant's), so a variant added, removed or reordered without its row is reported. The enum has to be in the same file as the table. A third argument, `snake_case`, hashes the variant name in snake case (`// pinoc:discriminators("global:", Instruction, snake_case)`). The discriminator length is the row's own (1 to 32 bytes). The finding is anchored at the wrong row, and its fix gives the right bytes.
 
 <details>
 <summary><strong>Note on <code>ACC002-P</code>: name-match detection</strong></summary>

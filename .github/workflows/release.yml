@@ -1,0 +1,88 @@
+name: Release
+
+# Attaches prebuilt binaries to the GitHub release for a version tag, so CI can
+# install pinoc in seconds (`cargo binstall pinoc`, or the action in action.yml)
+# instead of compiling it with `cargo install`.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build, e.g. v0.4.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    name: Create the release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Check the tag is the crate's version
+        run: |
+          version=$(grep '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::$TAG is not the version in Cargo.toml (v$version)"
+            exit 1
+          fi
+      - name: Create it if it does not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --title "$TAG" --notes "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/$TAG/CHANGELOG.md)."
+
+  binaries:
+    name: ${{ matrix.target }}
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest supported runners, so the binaries link against an old
+          # glibc and run on newer systems too.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+          # Both macOS targets build on Apple silicon; x86_64 is a cross build
+          # the Xcode toolchain supports, so no Intel runner is needed.
+          - target: x86_64-apple-darwin
+            os: macos-14
+          - target: aarch64-apple-darwin
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      # The archive layout and name are what `[package.metadata.binstall]` in
+      # Cargo.toml and action.yml expect. Changing one means changing all three.
+      - name: Package
+        id: package
+        run: |
+          name="pinoc-${TAG#v}-${{ matrix.target }}"
+          tar -czf "$name.tar.gz" -C "target/${{ matrix.target }}/release" pinoc
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$TAG" --clobber \
+            "${{ steps.package.outputs.name }}.tar.gz" \
+            "${{ steps.package.outputs.name }}.tar.gz.sha256"

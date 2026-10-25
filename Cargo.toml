@@ -22,6 +22,15 @@ heck = "0.5"
 syn = { version = "2.0", features = ["full", "visit", "extra-traits"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 codama = "0.13.2"
+sha2 = "0.10"
+bs58 = "0.5"
+
+# `cargo binstall pinoc` downloads the binary the release workflow attaches,
+# instead of compiling it. Keep in step with .github/workflows/release.yml.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }.tar.gz"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
 
 [[bin]]
 name = "pinoc"

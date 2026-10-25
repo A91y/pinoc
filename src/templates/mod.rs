@@ -87,8 +87,9 @@ pinoc build
 # Run tests
 pinoc test
 
-# Deploy the program
+# Deploy the program, then check what is on chain is what was built
 pinoc deploy
+pinoc verify
 
 # Get help
 pinoc help
@@ -108,9 +109,23 @@ pub fn pinoc_toml() -> &'static str {
     r#"[provider]
 cluster = "localhost"
 wallet = "~/.config/solana/id.json"
+# The program's own keypair, the one `declare_id!` names. `pinoc deploy`
+# refuses one that holds another address.
+# program_keypair = "target/deploy/<name>-keypair.json"
 
 [idl]
 generator = "auto"
+# out_dir = "idl"          # commit the IDL; `pinoc idl --check` in CI
+
+# A cluster whose build needs cargo features. `pinoc build --cluster devnet`
+# builds with them, and `pinoc deploy --cluster devnet` refuses anything else.
+# [clusters.devnet]
+# url = "devnet"
+# features = ["devnet"]
+
+# [test]
+# features = ["test-default"]
+# programs = ["tests/mock_program"]   # other SBF programs the tests load
 "#
 }
 

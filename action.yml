@@ -1,0 +1,76 @@
+name: Setup pinoc
+description: Install a pinned pinoc, and optionally the Solana CLI and SBF toolchain that `pinoc build` and `pinoc test` need.
+branding:
+  icon: package
+  color: purple
+
+inputs:
+  version:
+    description: "The pinoc version to install, e.g. 0.4.0. Pin it, since a different pinoc can write a different IDL."
+    required: true
+  solana-version:
+    description: "If set, also install this Agave release (the Solana CLI and `cargo build-sbf`), as named in https://release.anza.xyz/v<version>/install"
+    required: false
+    default: ""
+
+outputs:
+  version:
+    description: The pinoc version that was installed.
+    value: ${{ steps.check.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install pinoc
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        VERSION="${VERSION#v}"
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64)   target=x86_64-unknown-linux-gnu ;;
+          Linux-ARM64) target=aarch64-unknown-linux-gnu ;;
+          macOS-X64)   target=x86_64-apple-darwin ;;
+          macOS-ARM64) target=aarch64-apple-darwin ;;
+          *)           target="" ;;
+        esac
+        dest="$HOME/.pinoc/bin"
+        mkdir -p "$dest"
+        archive="pinoc-$VERSION-$target.tar.gz"
+        base="https://github.com/a91y/pinoc/releases/download/v$VERSION"
+        tmp=$(mktemp -d)
+        if [ -n "$target" ] \
+          && curl -fsSL -o "$tmp/$archive" "$base/$archive" \
+          && curl -fsSL -o "$tmp/$archive.sha256" "$base/$archive.sha256"; then
+          (cd "$tmp" && shasum -a 256 -c "$archive.sha256")
+          tar -xzf "$tmp/$archive" -C "$dest"
+        else
+          # Releases before prebuilt binaries, or a platform without one.
+          echo "No prebuilt pinoc $VERSION for ${target:-$RUNNER_OS-$RUNNER_ARCH}; building it with cargo install."
+          cargo install pinoc --version "$VERSION" --locked --root "$HOME/.pinoc"
+        fi
+        echo "$dest" >> "$GITHUB_PATH"
+
+    - name: Confirm the version
+      id: check
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        installed=$("$HOME/.pinoc/bin/pinoc" --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        if [ "$installed" != "${VERSION#v}" ]; then
+          echo "::error::pinoc is $installed, expected ${VERSION#v}"
+          exit 1
+        fi
+        echo "version=$installed" >> "$GITHUB_OUTPUT"
+
+    - name: Install the Solana CLI and SBF toolchain
+      if: inputs.solana-version != ''
+      shell: bash
+      env:
+        SOLANA_VERSION: ${{ inputs.solana-version }}
+      run: |
+        set -euo pipefail
+        sh -c "$(curl -sSfL "https://release.anza.xyz/v${SOLANA_VERSION#v}/install")"
+        echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"

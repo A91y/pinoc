@@ -2,6 +2,7 @@ mod acc001_owner;
 mod acc002_signer;
 mod acc003_confusion;
 mod cpi001_arbitrary_cpi;
+mod disc001_discriminator;
 mod zc001_padding;
 mod zc002_length;
 mod zc003_repr_c;
@@ -22,6 +23,8 @@ pub fn registry() -> Vec<Box<dyn Lint>> {
         Box::new(zc001_padding::Zc001Padding),
         Box::new(zc002_length::Zc002Length),
         Box::new(zc003_repr_c::Zc003ReprC),
+        // Discriminator lints
+        Box::new(disc001_discriminator::Disc001Discriminator),
     ]
 }
 
