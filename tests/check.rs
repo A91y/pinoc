@@ -438,13 +438,13 @@ fn every_code_has_one_doc_and_a_readme_row_and_explain_prints_it() {
     assert_eq!(codes, documented, "registered codes and docs/lints/ differ");
 
     let readme = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/check/README.md"),
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/check.md"),
     )
     .unwrap();
     for (code, text) in &docs {
         assert!(
             readme.contains(&format!("| `{code}` |")),
-            "{code} has no row in src/check/README.md"
+            "{code} has no row in docs/check.md"
         );
         assert!(text.starts_with(&format!("# {code} ")), "{code}.md title");
         let out = pinoc(&dir, &["check", "--explain", code]);

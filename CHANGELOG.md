@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The build record (`target/deploy/<name>.build.json`) also holds the artifact's SHA-256 and, for a `--cluster` build, the cluster. Its format is documented as stable, for a test harness to read.
 
 ### Changed
+- The documentation moved to `docs/`, one page per topic (building and testing, deploying, IDL, clients, `pinoc check`, CI, configuration), with every `Pinoc.toml` key described once in `docs/configuration.md`. `README.md` is now a short overview with links, and `src/*/README.md` hold contributor notes. A test checks that every relative link and heading anchor in the markdown resolves.
 - `--json` is now the same as `--format json`. Its output is unchanged. It cannot be combined with `--format`.
 - The planned `CPI003-P` is listed as warn, pending a check of current runtime behaviour on same-transaction revival. It was listed as deny with nothing to support that.
 - The planned `ACC004-P` is narrowed: it fires only when two state types share a size, one is deserialized, and no tag is compared on that path. Same-size types alone are common.

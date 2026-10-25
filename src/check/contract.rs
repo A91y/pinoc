@@ -73,7 +73,7 @@ pub trait Lint {
     fn backend(&self) -> Backend;
     fn default_severity(&self) -> Severity;
     fn default_confidence(&self) -> Confidence;
-    /// One line, for the README table and SARIF `shortDescription`.
+    /// One line, for the docs/check.md table and SARIF `shortDescription`.
     fn summary(&self) -> &'static str;
     /// The code's `docs/lints/<CODE>.md`, for `--explain` and SARIF help.
     fn explain(&self) -> &'static str;
