@@ -73,6 +73,10 @@ pub trait Lint {
     fn backend(&self) -> Backend;
     fn default_severity(&self) -> Severity;
     fn default_confidence(&self) -> Confidence;
+    /// One line, for the docs/check.md table and SARIF `shortDescription`.
+    fn summary(&self) -> &'static str;
+    /// The code's `docs/lints/<CODE>.md`, for `--explain` and SARIF help.
+    fn explain(&self) -> &'static str;
     /// Raw findings for one file, before config severity and suppression. The
     /// struct-layout lints work here.
     fn run(&self, _file: &ParsedFile) -> Vec<Finding> {

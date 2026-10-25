@@ -1,6 +1,8 @@
+pub mod codes;
 pub mod contract;
 pub mod facts;
 pub mod lints;
+pub mod locate;
 pub mod output;
 pub mod suppress;
 
@@ -10,13 +12,25 @@ use crate::config;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-/// Coverage findings: they report what the run could not analyse, not a defect in
-/// the program. Both are configurable like any lint code.
-const NO_HANDLERS: &str = "NO-HANDLERS";
-const UNTRACKED_ACCOUNTS: &str = "UNTRACKED-ACCOUNTS";
+// Coverage findings report what the run could not analyse, not a defect in
+// the program. Both are configurable like any lint code.
+use crate::check::codes::{NO_HANDLERS, UNTRACKED_ACCOUNTS, UNUSED_ALLOW};
+
+/// How findings are printed. The exit code is the same for each.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum Format {
+    Human,
+    Json,
+    /// GitHub Actions workflow annotations.
+    Github,
+    /// SARIF 2.1.0, for code scanning.
+    Sarif,
+}
 
 pub struct CheckOptions {
-    pub json: bool,
+    pub format: Format,
+    /// Print this code's description and analyse nothing.
+    pub explain: Option<String>,
     pub deny: Vec<String>,
     pub allow: Vec<String>,
 }
@@ -61,12 +75,13 @@ fn resolve(cfg: &EffectiveConfig, code: &str) -> Disposition {
 }
 
 pub fn run(opts: CheckOptions) -> Result<i32> {
+    if let Some(code) = &opts.explain {
+        return explain(code);
+    }
     let cfg = load_effective_config(&opts)?;
 
     let lints = lints::registry();
-    let mut known: Vec<&'static str> = lints.iter().map(|l| l.code()).collect();
-    known.extend([NO_HANDLERS, UNTRACKED_ACCOUNTS]);
-    reject_unknown_codes(&cfg, &known)?;
+    reject_unknown_codes(&cfg, &codes::configurable())?;
 
     let src_dir = Path::new("src");
     let mut files = Vec::new();
@@ -159,14 +174,19 @@ pub fn run(opts: CheckOptions) -> Result<i32> {
     ));
 
     let processed = process_findings(raw, &cfg, &mut supp);
-    if opts.json {
-        output::render_json(&processed.findings)?;
-    } else {
-        output::render_human(
+    match opts.format {
+        Format::Json => output::render_json(&processed.findings)?,
+        Format::Human => output::render_human(
             &processed.findings,
             &processed.below_threshold,
             cfg.threshold,
-        );
+        ),
+        Format::Github => output::render_github(
+            &processed.findings,
+            &processed.below_threshold,
+            cfg.threshold,
+        ),
+        Format::Sarif => output::render_sarif(&processed.findings)?,
     }
     Ok(processed.exit_code)
 }
@@ -289,7 +309,7 @@ pub(crate) fn process_findings(
 
     for a in supp.unused() {
         out.push(Finding {
-            code: "UNUSED-ALLOW",
+            code: UNUSED_ALLOW,
             id: "unused-allow",
             confidence: Confidence::Definite,
             severity: Severity::Warn,
@@ -338,6 +358,22 @@ fn is_wildcard(code: &str) -> bool {
 /// Rejects any deny/warn/allow value that is neither a real lint code nor
 /// `*`/`all`. This blocks typos and a bare `--deny *` (which the shell expands
 /// into filenames before pinoc runs) with one clear error.
+/// Prints a code's `docs/lints` entry. An unknown code is refused the way
+/// `--deny` refuses one.
+fn explain(code: &str) -> Result<i32> {
+    let all = codes::all();
+    match all.iter().find(|c| c.code == code) {
+        Some(info) => {
+            print!("{}", info.explain);
+            Ok(0)
+        }
+        None => anyhow::bail!(
+            "`{code}`, given to `--explain`, is not a lint code. The codes are {}.",
+            all.iter().map(|c| c.code).collect::<Vec<_>>().join(", ")
+        ),
+    }
+}
+
 fn reject_unknown_codes(cfg: &EffectiveConfig, known: &[&'static str]) -> Result<()> {
     let lists = [
         (&cfg.deny, "`deny` under `[check]` in Pinoc.toml"),

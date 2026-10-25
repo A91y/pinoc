@@ -24,6 +24,12 @@ impl Lint for Zc002Length {
     fn default_confidence(&self) -> Confidence {
         Confidence::Likely
     }
+    fn summary(&self) -> &'static str {
+        "Account data borrowed through an *_unchecked accessor with no length guard."
+    }
+    fn explain(&self) -> &'static str {
+        include_str!("../../../docs/lints/ZC002-P.md")
+    }
 
     fn run_handlers(&self, handlers: &[Handler]) -> Vec<Finding> {
         let mut out = Vec::new();

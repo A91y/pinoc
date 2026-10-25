@@ -24,6 +24,12 @@ impl Lint for Acc003Confusion {
     fn default_confidence(&self) -> Confidence {
         Confidence::Heuristic
     }
+    fn summary(&self) -> &'static str {
+        "A singleton-named account read as trusted state without its key compared."
+    }
+    fn explain(&self) -> &'static str {
+        include_str!("../../../docs/lints/ACC003-P.md")
+    }
 
     fn run_handlers(&self, handlers: &[Handler]) -> Vec<Finding> {
         let mut out = Vec::new();

@@ -24,6 +24,12 @@ impl Lint for Acc001Owner {
     fn default_confidence(&self) -> Confidence {
         Confidence::Likely
     }
+    fn summary(&self) -> &'static str {
+        "An account read as this program's state without an owner check."
+    }
+    fn explain(&self) -> &'static str {
+        include_str!("../../../docs/lints/ACC001-P.md")
+    }
 
     fn run_handlers(&self, handlers: &[Handler]) -> Vec<Finding> {
         let mut out = Vec::new();

@@ -190,8 +190,25 @@ enum Commands {
         command: ConfigCommands,
     },
     Check {
-        #[arg(long, help = "Emit findings as JSON")]
+        #[arg(
+            long,
+            conflicts_with = "format",
+            help = "Emit findings as JSON (same as --format json)"
+        )]
         json: bool,
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = check::Format::Human,
+            help = "Output format: human, json, github (workflow annotations) or sarif (code scanning)"
+        )]
+        format: check::Format,
+        #[arg(
+            long,
+            value_name = "CODE",
+            help = "Print what a code means, how it is detected and how to fix it, then exit"
+        )]
+        explain: Option<String>,
         #[arg(
             long,
             num_args = 1..,
@@ -340,8 +357,16 @@ fn main() -> Result<()> {
                 commands::config::init_config(*yes)?;
             }
         },
-        Commands::Check { json, deny, allow } => {
-            let code = commands::check::run_check(*json, deny.clone(), allow.clone())?;
+        Commands::Check {
+            json,
+            format,
+            explain,
+            deny,
+            allow,
+        } => {
+            let format = if *json { check::Format::Json } else { *format };
+            let code =
+                commands::check::run_check(format, explain.clone(), deny.clone(), allow.clone())?;
             std::process::exit(code);
         }
         Commands::Help => {

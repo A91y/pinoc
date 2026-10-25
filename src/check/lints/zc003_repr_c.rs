@@ -26,6 +26,12 @@ impl Lint for Zc003ReprC {
     fn default_confidence(&self) -> Confidence {
         Confidence::Definite
     }
+    fn summary(&self) -> &'static str {
+        "A Shank struct read zero-copy without #[repr(C)] or #[repr(transparent)]."
+    }
+    fn explain(&self) -> &'static str {
+        include_str!("../../../docs/lints/ZC003-P.md")
+    }
 
     fn run(&self, file: &ParsedFile) -> Vec<Finding> {
         let path = file.path.display().to_string();

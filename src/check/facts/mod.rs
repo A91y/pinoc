@@ -51,12 +51,9 @@ pub enum Origin {
 pub enum Validation {
     Signer,
     Owner,
-    Key,
-    /// Key compared (`==`/`!=` or in a macro), not merely read like `Key`.
+    /// Key compared (`==`/`!=` or in a macro), not merely read.
     KeyCompared,
-    Writable,
     Uninitialized,
-    Discriminator,
     LengthChecked,
     /// The handler creates the account itself (`CreateAccount { to: account, .. }`),
     /// so its owner and contents are the program's own.
@@ -67,12 +64,7 @@ pub enum Validation {
 pub enum Use {
     BorrowData { mut_: bool, unchecked: bool },
     DeserializeState(String),
-    LamportsRead,
-    LamportsMut,
-    CpiAccount,
-    InvokeSignedSeeds,
     AssignOwner,
-    CloseDrainLamports,
 }
 
 #[derive(Clone)]
@@ -229,8 +221,6 @@ fn validation_for_method(name: &str) -> Option<Validation> {
     Some(match name {
         "is_signer" => Validation::Signer,
         "owner" | "owned_by" | "is_owned_by" => Validation::Owner,
-        "key" | "address" => Validation::Key,
-        "is_writable" => Validation::Writable,
         "is_data_empty" | "data_is_empty" => Validation::Uninitialized,
         "data_len" => Validation::LengthChecked,
         _ => return None,
@@ -1195,13 +1185,10 @@ impl<'a, 'i> Extractor<'a, 'i> {
                     ("owner", Validation::Owner),
                     ("owned_by", Validation::Owner),
                     ("is_owned_by", Validation::Owner),
-                    ("key", Validation::Key),
-                    ("address", Validation::Key),
                     // A key in a macro is almost always a comparison.
                     ("key", Validation::KeyCompared),
                     ("address", Validation::KeyCompared),
                     ("is_signer", Validation::Signer),
-                    ("is_writable", Validation::Writable),
                     ("is_data_empty", Validation::Uninitialized),
                     ("data_is_empty", Validation::Uninitialized),
                     ("data_len", Validation::LengthChecked),
@@ -1340,8 +1327,6 @@ impl<'ast> Visit<'ast> for Extractor<'_, '_> {
             } else if let Some(u) = borrow_use_for_method(&method) {
                 self.note_read(idx, node.method.span());
                 self.bindings[idx].uses.insert(u);
-            } else if method == "lamports" {
-                self.bindings[idx].uses.insert(Use::LamportsRead);
             } else if method == "assign" {
                 self.bindings[idx].uses.insert(Use::AssignOwner);
             }
@@ -1653,13 +1638,8 @@ impl Extractor<'_, '_> {
             return;
         }
 
-        // `invoke`/`invoke_signed(...)`: mark CPI accounts, record the callee.
+        // `invoke`/`invoke_signed(...)`: record the callee.
         if type_seg.is_none() && CPI_FUNCS.contains(&fn_seg.as_str()) {
-            for arg in &node.args {
-                if let Some(idx) = self.resolve(arg) {
-                    self.bindings[idx].uses.insert(Use::CpiAccount);
-                }
-            }
             let program_binding = node.args.first().and_then(|a| self.cpi_program_binding(a));
             self.cpi_sites.push(CpiSite {
                 program_binding,

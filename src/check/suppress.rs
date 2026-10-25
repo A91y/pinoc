@@ -7,9 +7,6 @@ pub struct Allow {
     pub file: String,
     pub line: usize,
     pub code: String,
-    /// Parsed but surfaced later (e.g. `--explain`); kept so the contract is stable.
-    #[allow(dead_code)]
-    pub reason: Option<String>,
     pub matched: bool,
 }
 
@@ -38,12 +35,11 @@ impl Suppressions {
             if code.is_empty() {
                 continue;
             }
-            let rest = after[end + 1..].trim_start_matches(['-', '—', ' ']).trim();
+            // Any reason after the code is for the reader; it is not stored.
             self.allows.push(Allow {
                 file: file.to_string(),
                 line: i + 1,
                 code,
-                reason: (!rest.is_empty()).then(|| rest.to_string()),
                 matched: false,
             });
         }
@@ -64,5 +60,24 @@ impl Suppressions {
 
     pub fn unused(&self) -> impl Iterator<Item = &Allow> {
         self.allows.iter().filter(|a| !a.matched)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_allow_with_a_reason_suppresses_like_one_without() {
+        let mut supp = Suppressions::default();
+        supp.scan(
+            "src/lib.rs",
+            "// pinoc:allow(ZC001-P) - padding is intentional\nstruct A;\n// pinoc:allow(ACC001-P) — checked by the caller\nfn f() {}\nlet x = 1; // pinoc:allow(ZC003-P)\n",
+        );
+        assert!(supp.is_suppressed("src/lib.rs", 2, "ZC001-P"));
+        assert!(supp.is_suppressed("src/lib.rs", 4, "ACC001-P"));
+        assert!(supp.is_suppressed("src/lib.rs", 5, "ZC003-P"));
+        assert!(!supp.is_suppressed("src/lib.rs", 4, "ZC001-P"));
+        assert_eq!(supp.unused().count(), 0);
     }
 }

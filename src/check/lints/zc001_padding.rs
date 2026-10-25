@@ -27,6 +27,12 @@ impl Lint for Zc001Padding {
     fn default_confidence(&self) -> Confidence {
         Confidence::Likely
     }
+    fn summary(&self) -> &'static str {
+        "A repr(C) Shank struct whose padded layout differs from its packed borsh layout."
+    }
+    fn explain(&self) -> &'static str {
+        include_str!("../../../docs/lints/ZC001-P.md")
+    }
 
     fn run(&self, file: &ParsedFile) -> Vec<Finding> {
         let path = file.path.display().to_string();

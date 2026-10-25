@@ -397,3 +397,270 @@ fn discriminator_constants_are_checked_against_their_preimages() {
     let text = stdout(&pinoc(&fixture("check_discriminators"), &["check"]));
     assert!(!text.contains("allowed.rs"), "{text}");
 }
+
+fn lint_docs() -> Vec<(String, String)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/lints");
+    let mut docs: Vec<(String, String)> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "md"))
+        .map(|p| {
+            (
+                p.file_stem().unwrap().to_str().unwrap().to_string(),
+                std::fs::read_to_string(&p).unwrap(),
+            )
+        })
+        .collect();
+    docs.sort();
+    docs
+}
+
+#[test]
+fn every_code_has_one_doc_and_a_readme_row_and_explain_prints_it() {
+    let dir = fixture("check_no_handlers");
+    let out = pinoc(&dir, &["check", "--explain", "NOPE"]);
+    assert!(!out.status.success());
+    let err = common::stderr(&out);
+    let listed = err
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .split("The codes are ")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{err}"))
+        .trim()
+        .trim_end_matches('.');
+    let mut codes: Vec<&str> = listed.split(", ").collect();
+    codes.sort();
+
+    let docs = lint_docs();
+    let documented: Vec<&str> = docs.iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(codes, documented, "registered codes and docs/lints/ differ");
+
+    let readme = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/check.md"),
+    )
+    .unwrap();
+    for (code, text) in &docs {
+        assert!(
+            readme.contains(&format!("| `{code}` |")),
+            "{code} has no row in docs/check.md"
+        );
+        assert!(text.starts_with(&format!("# {code} ")), "{code}.md title");
+        let out = pinoc(&dir, &["check", "--explain", code]);
+        assert!(out.status.success(), "{code}");
+        assert_eq!(&stdout(&out), text, "--explain {code}");
+    }
+}
+
+/// The `## Flagged` and `## Not flagged` examples in docs/lints, run through the
+/// binary, so a doc cannot show an example the lint does not behave like.
+#[test]
+fn lint_doc_examples_behave_as_documented() {
+    for (code, text) in lint_docs() {
+        for (heading, expect) in [("## Flagged\n", true), ("## Not flagged\n", false)] {
+            let Some(rest) = text.split(heading).nth(1) else {
+                continue;
+            };
+            let block = rest
+                .split("```rust\n")
+                .nth(1)
+                .and_then(|b| b.split("```").next())
+                .unwrap_or_else(|| panic!("{code}: no rust block under {heading}"));
+            let dir = std::env::temp_dir().join(format!(
+                "pinoc-doc-example-{}-{code}-{expect}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(dir.join("src")).unwrap();
+            std::fs::write(dir.join("src/lib.rs"), block).unwrap();
+            let found = codes(&findings_in(&dir, &["--deny", &code])).contains(&code.as_str());
+            assert_eq!(found, expect, "{code} {heading}{block}");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+}
+
+fn findings_in(dir: &std::path::Path, args: &[&str]) -> Vec<Value> {
+    let mut all = vec!["check", "--json"];
+    all.extend(args);
+    let out = pinoc(dir, &all);
+    serde_json::from_str(&stdout(&out)).expect("--json stdout is a JSON array")
+}
+
+/// Runs `pinoc check` in `dir` with `GITHUB_WORKSPACE` set, as in Actions.
+fn pinoc_in_workspace(
+    dir: &std::path::Path,
+    workspace: &std::path::Path,
+    args: &[&str],
+) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_pinoc"))
+        .args(args)
+        .current_dir(dir)
+        .env("GITHUB_WORKSPACE", workspace)
+        .output()
+        .expect("failed to run pinoc")
+}
+
+fn sorted_lines(s: &str) -> Vec<String> {
+    let mut v: Vec<String> = s.lines().map(str::to_string).collect();
+    v.sort();
+    v
+}
+
+#[test]
+fn github_format_annotates_from_the_repository_root() {
+    let dir = fixture("check_free");
+    let workspace = dir.parent().unwrap();
+    let out = pinoc_in_workspace(&dir, workspace, &["check", "--format", "github"]);
+    let expected = std::fs::read_to_string(dir.join("expected/check.github.txt")).unwrap();
+    // Annotations come in filesystem order, so compare line sets.
+    assert_eq!(sorted_lines(&stdout(&out)), sorted_lines(&expected));
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
+fn github_format_puts_project_wide_findings_on_the_manifest() {
+    let dir = fixture("check_no_handlers");
+    let out = pinoc_in_workspace(
+        &dir,
+        dir.parent().unwrap(),
+        &["check", "--format", "github"],
+    );
+    let text = stdout(&out);
+    assert!(
+        text.lines()
+            .any(|l| l.starts_with("::warning title=NO-HANDLERS no-handlers::")),
+        "{text}"
+    );
+
+    let copy = common::temp_copy("check_no_handlers");
+    std::fs::write(copy.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+    let out = pinoc_in_workspace(
+        &copy,
+        copy.parent().unwrap(),
+        &["check", "--format", "github"],
+    );
+    let name = copy.file_name().unwrap().to_str().unwrap();
+    assert!(
+        stdout(&out).lines().any(|l| l.starts_with(&format!(
+            "::warning file={name}/Cargo.toml,line=1,col=1,title=NO-HANDLERS no-handlers::"
+        ))),
+        "{}",
+        stdout(&out)
+    );
+}
+
+#[test]
+fn every_format_exits_like_the_human_one() {
+    for name in [
+        "check_context",
+        "check_discriminators",
+        "check_free",
+        "check_impl",
+        "check_no_handlers",
+        "check_shared_accounts",
+        "check_typed_context",
+    ] {
+        let dir = fixture(name);
+        let human = pinoc(&dir, &["check"]);
+        for format in ["json", "github", "sarif"] {
+            let out = pinoc(&dir, &["check", "--format", format]);
+            assert_eq!(
+                out.status.code(),
+                human.status.code(),
+                "{name} --format {format}"
+            );
+            assert_eq!(
+                common::stderr(&out),
+                common::stderr(&human),
+                "{name} --format {format}"
+            );
+        }
+        assert_eq!(
+            stdout(&pinoc(&dir, &["check", "--json"])),
+            stdout(&pinoc(&dir, &["check", "--format", "json"])),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn sarif_lists_every_code_as_a_rule_and_matches_the_json_findings() {
+    let dir = fixture("check_free");
+    let out = pinoc_in_workspace(&dir, dir.parent().unwrap(), &["check", "--format", "sarif"]);
+    let sarif: Value = serde_json::from_str(&stdout(&out)).expect("SARIF is JSON");
+    assert_eq!(sarif["version"], "2.1.0");
+    assert_eq!(
+        sarif["$schema"],
+        "https://json.schemastore.org/sarif-2.1.0.json"
+    );
+    let run = &sarif["runs"][0];
+    assert_eq!(run["tool"]["driver"]["name"], "pinoc");
+
+    let rules: Vec<&str> = run["tool"]["driver"]["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_str().unwrap())
+        .collect();
+    let mut sorted_rules = rules.clone();
+    sorted_rules.sort();
+    let docs = lint_docs();
+    assert_eq!(
+        sorted_rules,
+        docs.iter().map(|(c, _)| c.as_str()).collect::<Vec<_>>()
+    );
+    for rule in run["tool"]["driver"]["rules"].as_array().unwrap() {
+        let code = rule["id"].as_str().unwrap();
+        let doc = &docs.iter().find(|(c, _)| c == code).unwrap().1;
+        assert_eq!(rule["help"]["markdown"], *doc, "{code}");
+    }
+
+    let json = findings("check_free", &[]);
+    let mut from_sarif: Vec<(String, String, u64, u64)> = run["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            let index = r["ruleIndex"].as_u64().unwrap() as usize;
+            assert_eq!(rules[index], r["ruleId"].as_str().unwrap());
+            let loc = &r["locations"][0]["physicalLocation"];
+            (
+                r["ruleId"].as_str().unwrap().to_string(),
+                r["level"].as_str().unwrap().to_string(),
+                loc["region"]["startLine"].as_u64().unwrap(),
+                loc["region"]["startColumn"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    let mut from_json: Vec<(String, String, u64, u64)> = json
+        .iter()
+        .map(|f| {
+            let level = match f["severity"].as_str().unwrap() {
+                "deny" => "error",
+                "warn" => "warning",
+                _ => "note",
+            };
+            (
+                f["code"].as_str().unwrap().to_string(),
+                level.to_string(),
+                f["span"]["line"].as_u64().unwrap(),
+                f["span"]["col"].as_u64().unwrap() + 1,
+            )
+        })
+        .collect();
+    from_sarif.sort();
+    from_json.sort();
+    assert_eq!(from_sarif, from_json);
+    assert!(run["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(
+            |r| r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+                .as_str()
+                .unwrap()
+                .starts_with("check_free/src/")
+        ));
+}

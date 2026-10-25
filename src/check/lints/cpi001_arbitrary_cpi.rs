@@ -25,6 +25,12 @@ impl Lint for Cpi001ArbitraryCpi {
     fn default_confidence(&self) -> Confidence {
         Confidence::Likely
     }
+    fn summary(&self) -> &'static str {
+        "A CPI whose program id comes from an unvalidated caller-supplied account."
+    }
+    fn explain(&self) -> &'static str {
+        include_str!("../../../docs/lints/CPI001-P.md")
+    }
 
     fn run_handlers(&self, handlers: &[Handler]) -> Vec<Finding> {
         let mut out = Vec::new();
