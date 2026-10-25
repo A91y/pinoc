@@ -52,6 +52,25 @@ shank_out_dir = "clients/shank"   # per-generator, wins over the shared out_dir
 codama_out_dir = "clients/codama"
 ```
 
+The TypeScript client goes to `clients/ts`, or `ts_out_dir`.
+
+## Configured clients and `--check`
+
+`[client]` can say which clients the project keeps, so a bare `pinoc client generate` renders all of them, reading the IDL from `[idl] out_dir`:
+
+```toml
+[client]
+languages = ["ts", "rust"]   # what `pinoc client generate` renders without --language
+generator = "codama"         # the Rust client's generator, without --generator (TypeScript has one)
+ts_out_dir = "clients/ts"
+```
+
+`--language` still renders one client. `--out-dir` names one directory, so it is refused when `languages` asks for more than one and `--language` is not given.
+
+`pinoc client generate --check` renders each client in place, compares it with what was there, and then puts every file back, so the directory is left as it was found (the codama tooling in `.pinoc-codama/` stays installed). It lists each file that differs, each the generator now writes that is missing, and each under `src/generated/` it no longer writes, and exits nonzero if there is any. Files outside `src/generated/` that the generator does not write (a hand-written script beside the client) are not its to judge and are ignored. The TypeScript renderer formats its output with prettier, which reads the nearest prettier config above the client directory, so run the check in the repository the client was committed from: a copy without the repository's `.prettierrc` renders differently formatted files and reports them all.
+
+Both generators own `src/generated/`: the shank generator clears it before writing, as the codama renderers do, so an account or instruction removed from the program does not leave its old file behind.
+
 ## Codama dependencies
 
 Codama's npm dependencies live in a project-local `<out-dir>/.pinoc-codama/`, isolated from the rest of the project. `pinoc` installs them only with consent: without `--auto-install` it stops before writing anything (no directory, no `.gitignore` change) and says so. `.pinoc-codama/` is added to `.gitignore` automatically when the project is a git repo. If Node.js is missing entirely, `pinoc` prints an install pointer.

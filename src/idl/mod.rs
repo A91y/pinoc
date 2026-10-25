@@ -16,7 +16,8 @@ use manual_errors::{Conversion, ManualErrorCode, ManualErrors};
 use std::fs;
 use std::path::Path;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Generator {
     Shank,
     Codama,

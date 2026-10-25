@@ -138,28 +138,11 @@ fn collect_consts(items: &[syn::Item], out: &mut Vec<syn::ItemConst>) {
 
 /// `Some(type override)` if `line` is a marker comment.
 fn marker_of(line: &str) -> Option<Option<String>> {
-    let rest = line
-        .trim()
-        .strip_prefix("//")?
-        .trim()
-        .strip_prefix(MARKER)?;
-    let rest = rest.trim();
-    if rest.is_empty() {
-        return Some(None);
-    }
-    let ty = rest.strip_prefix('(')?.split(')').next()?.trim();
-    Some(Some(ty.to_string()))
+    crate::markers::marker_of(line, MARKER).map(|ty| ty.map(str::to_string))
 }
 
-/// The marker in the comment block directly above `item` (above its doc
-/// comments and attributes, or between them and the `const` keyword).
 fn marker_above(item: &syn::ItemConst, lines: &[&str]) -> Option<(usize, Option<String>)> {
-    let keyword = item.const_token.span().start().line.checked_sub(1)?;
-    let mut top = item.span().start().line.checked_sub(1)?.min(keyword);
-    while top > 0 && lines.get(top - 1)?.trim().starts_with("//") {
-        top -= 1;
-    }
-    (top..keyword).find_map(|index| Some((index, marker_of(lines.get(index)?)?)))
+    crate::markers::marker_above(item, lines, MARKER).map(|(i, ty)| (i, ty.map(str::to_string)))
 }
 
 fn constant_type(item: &syn::ItemConst, type_override: Option<&str>) -> Result<String> {

@@ -444,3 +444,105 @@ fn codama_tooling_is_installed_from_the_built_in_lock() {
         );
     }
 }
+
+/// `[idl] out_dir` and `[client]` settings, so bare commands do what a
+/// regeneration script used to.
+fn configured_project() -> std::path::PathBuf {
+    let dir = temp_copy("client_program");
+    std::fs::write(
+        dir.join("Pinoc.toml"),
+        "[provider]\ncluster = \"localhost\"\nwallet = \"/tmp/id.json\"\n\n[idl]\nout_dir = \"idl\"\n\n[client]\nlanguages = [\"rust\"]\ngenerator = \"shank\"\n",
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn idl_and_client_follow_the_config_and_check_reports_drift() {
+    let dir = configured_project();
+    let out = pinoc(&dir, &["idl"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(dir.join("idl/client_program.json").exists());
+    assert!(!dir.join("target/idl").exists());
+
+    let out = pinoc(&dir, &["client", "generate"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(dir.join("clients/rust-shank/src/generated").exists());
+
+    let out = pinoc(&dir, &["idl", "--check"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("The IDL in idl/ is up to date"));
+    let out = pinoc(&dir, &["client", "generate", "--check"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("The Rust client in clients/rust-shank/ is up to date"));
+
+    // A hand-written file beside the client is not the generator's to judge.
+    std::fs::write(dir.join("clients/rust-shank/NOTES.md"), "mine\n").unwrap();
+    // A generated file left over from an older program is.
+    let stray = dir.join("clients/rust-shank/src/generated/accounts/old.rs");
+    std::fs::write(&stray, "// gone\n").unwrap();
+    let lib = dir.join("src/lib.rs");
+    let source = std::fs::read_to_string(&lib).unwrap();
+    std::fs::write(
+        &lib,
+        source.replace(
+            "pub amount: u64,\n}",
+            "pub amount: u64,\n    pub bump: u8,\n}",
+        ),
+    )
+    .unwrap();
+    let idl_before = std::fs::read(dir.join("idl/client_program.json")).unwrap();
+
+    let out = pinoc(&dir, &["idl", "--check"]);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(
+        err.contains("The IDL in idl/ is out of date")
+            && err.contains("client_program.json (differs)"),
+        "{err}"
+    );
+    assert_eq!(
+        std::fs::read(dir.join("idl/client_program.json")).unwrap(),
+        idl_before
+    );
+
+    // The client is generated from the committed IDL, so regenerate that first.
+    assert!(pinoc(&dir, &["idl"]).status.success());
+    let snapshot =
+        std::fs::read_to_string(dir.join("clients/rust-shank/src/generated/accounts/vault.rs"))
+            .unwrap();
+    let out = pinoc(&dir, &["client", "generate", "--check"]);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(
+        err.contains("src/generated/accounts/vault.rs (differs)")
+            && err.contains("src/generated/accounts/old.rs (no longer generated)")
+            && !err.contains("NOTES.md"),
+        "{err}"
+    );
+    // --check leaves the directory as it found it.
+    assert_eq!(
+        std::fs::read_to_string(dir.join("clients/rust-shank/src/generated/accounts/vault.rs"))
+            .unwrap(),
+        snapshot
+    );
+    assert!(stray.exists());
+}
+
+#[test]
+fn out_dir_with_several_configured_languages_is_refused() {
+    let dir = configured_project();
+    let toml = std::fs::read_to_string(dir.join("Pinoc.toml")).unwrap();
+    std::fs::write(
+        dir.join("Pinoc.toml"),
+        toml.replace("languages = [\"rust\"]", "languages = [\"rust\", \"ts\"]"),
+    )
+    .unwrap();
+    let out = pinoc(&dir, &["client", "generate", "--out-dir", "x"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("Pass --language with it"),
+        "{}",
+        stderr(&out)
+    );
+}

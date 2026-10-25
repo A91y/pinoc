@@ -3,7 +3,8 @@ pub mod discriminants;
 pub mod shank;
 
 /// Target language of the generated client. Only the codama generator renders TypeScript.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Language {
     Rust,
     Ts,

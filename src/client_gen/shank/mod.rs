@@ -39,6 +39,12 @@ pub fn generate_rust_client(
     let accounts_dir = generated_dir.join("accounts");
     let instructions_dir = generated_dir.join("instructions");
     let types_dir = generated_dir.join("types");
+    // Every file under it is written here, so one for an account, instruction
+    // or type the program no longer has would otherwise be left behind.
+    if generated_dir.exists() {
+        fs::remove_dir_all(&generated_dir)
+            .with_context(|| format!("Failed to clear {}", generated_dir.display()))?;
+    }
     fs::create_dir_all(&accounts_dir)?;
     fs::create_dir_all(&instructions_dir)?;
     fs::create_dir_all(&types_dir)?;

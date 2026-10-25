@@ -169,9 +169,9 @@ fn extract_project_name(cargo_content: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-struct ProgramIdDecl {
-    file: PathBuf,
-    address: String,
+pub(crate) struct ProgramIdDecl {
+    pub file: PathBuf,
+    pub address: String,
 }
 
 /// Finds the program's own ID declaration anywhere under `src_dir`, in priority
@@ -180,7 +180,7 @@ struct ProgramIdDecl {
 /// `pubkey!("...")`, or a bare `"..."`). Returns the file the declaration lives
 /// in and the current address, since the ID isn't always a `declare_id!` in
 /// `lib.rs` (e.g. pinocchio 0.11 programs use `const ID` in `constants.rs`).
-fn find_program_id_decl(src_dir: &Path) -> Result<Option<ProgramIdDecl>> {
+pub(crate) fn find_program_id_decl(src_dir: &Path) -> Result<Option<ProgramIdDecl>> {
     let mut files = Vec::new();
     collect_rust_files(src_dir, &mut files)?;
     files.sort();

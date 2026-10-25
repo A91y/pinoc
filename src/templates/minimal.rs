@@ -52,6 +52,7 @@ pinoc build
 
 ```bash
 pinoc deploy
+pinoc verify    # the deployed bytes are the artifact you built
 ```
 "#,
         project_name

@@ -30,6 +30,7 @@ pub enum Category {
     Acc,
     Cpi,
     Zc,
+    Disc,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]

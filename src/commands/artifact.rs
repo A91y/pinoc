@@ -1,7 +1,8 @@
-use crate::config::Arch;
+use crate::config::{Arch, ClusterConfig};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 pub const NO_ENTRYPOINT: &str = "no-entrypoint";
@@ -197,10 +198,23 @@ pub fn check_entrypoint(
 pub struct BuildRecord {
     pub features: Vec<String>,
     pub arch: Option<Arch>,
+    /// The `[clusters]` entry it was built for with `--cluster`, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster: Option<String>,
     /// Length and FNV-1a hash of the artifact, to tell when something other
     /// than pinoc has replaced it since.
     len: u64,
     hash: String,
+    /// SHA-256 of the artifact, hex, which is what `sha256sum` and `pinoc verify` print.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// Whether the artifact on disk is the one a `BuildRecord` describes.
@@ -230,7 +244,12 @@ fn normalized(features: &[String]) -> Vec<String> {
 }
 
 /// Records the features and arch the artifact was just built with.
-pub fn record_build(manifest: Option<&toml::Table>, features: &[String], arch: Option<Arch>) {
+pub fn record_build(
+    manifest: Option<&toml::Table>,
+    features: &[String],
+    arch: Option<Arch>,
+    cluster: Option<&str>,
+) {
     let Some(path) = manifest.and_then(artifact_path) else {
         return;
     };
@@ -241,8 +260,10 @@ pub fn record_build(manifest: Option<&toml::Table>, features: &[String], arch: O
     let record = BuildRecord {
         features: normalized(features),
         arch,
+        cluster: cluster.map(str::to_string),
         len,
         hash,
+        sha256: Some(sha256_hex(&bytes)),
     };
     if let Ok(json) = serde_json::to_string_pretty(&record) {
         let _ = std::fs::write(record_path(&path), json + "\n");
@@ -306,6 +327,76 @@ pub fn check_build_matches(
         path.display(),
         describe(&record.features, record.arch),
         describe(&wanted, arch)
+    )
+}
+
+/// For `pinoc deploy` to a `[clusters]` entry: errors if the artifact's record
+/// says it was built for another cluster. It was, when it lacks a feature
+/// `cluster` builds with, or has one that only another cluster builds with.
+/// An artifact with no record is reported and let through, as `--no-build` does.
+pub fn check_built_for_cluster(
+    artifact: &Path,
+    name: &str,
+    clusters: &BTreeMap<String, ClusterConfig>,
+) -> Result<()> {
+    let Some(cluster) = clusters.get(name) else {
+        return Ok(());
+    };
+    let record = match read_build_record(artifact) {
+        Recorded::Yes(record) => record,
+        Recorded::No => {
+            println!(
+                "⚠️  {} was not built by pinoc, or has been rebuilt since, so it cannot be checked against cluster `{name}`.",
+                artifact.display()
+            );
+            return Ok(());
+        }
+    };
+    let wanted = normalized(&super::build::split_features(&cluster.features));
+    let missing: Vec<&String> = wanted
+        .iter()
+        .filter(|f| !record.features.contains(f))
+        .collect();
+    let mut foreign: Vec<(String, &String)> = Vec::new();
+    for (other, config) in clusters.iter().filter(|(other, _)| *other != name) {
+        for f in super::build::split_features(&config.features) {
+            if !wanted.contains(&f)
+                && record.features.contains(&f)
+                && !foreign.iter().any(|(seen, _)| *seen == f)
+            {
+                foreign.push((f, other));
+            }
+        }
+    }
+    if missing.is_empty() && foreign.is_empty() {
+        return Ok(());
+    }
+    let built = if record.features.is_empty() {
+        "no features".to_string()
+    } else {
+        format!("--features {}", record.features.join(","))
+    };
+    let mut reasons = Vec::new();
+    if !missing.is_empty() {
+        let list = missing
+            .iter()
+            .map(|f| format!("`{f}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        reasons.push(format!("`{name}` builds with {list}"));
+    }
+    for (feature, other) in &foreign {
+        reasons.push(format!("`{feature}` is a feature of cluster `{other}`"));
+    }
+    let built_for = record
+        .cluster
+        .as_ref()
+        .map(|c| format!(" (for cluster `{c}`)"))
+        .unwrap_or_default();
+    anyhow::bail!(
+        "{} was built with {built}{built_for}, which is not a build for cluster `{name}`: {}. Rebuild it with `pinoc build --cluster {name}`.",
+        artifact.display(),
+        reasons.join("; ")
     )
 }
 
