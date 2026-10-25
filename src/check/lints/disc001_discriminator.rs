@@ -49,6 +49,12 @@ impl Lint for Disc001Discriminator {
     fn default_confidence(&self) -> Confidence {
         Confidence::Definite
     }
+    fn summary(&self) -> &'static str {
+        "A marked discriminator constant that is not the SHA-256 prefix of its preimage."
+    }
+    fn explain(&self) -> &'static str {
+        include_str!("../../../docs/lints/DISC001-P.md")
+    }
 
     fn run(&self, file: &ParsedFile) -> Vec<Finding> {
         let path = file.path.display().to_string();

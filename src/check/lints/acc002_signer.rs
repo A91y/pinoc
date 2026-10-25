@@ -24,6 +24,12 @@ impl Lint for Acc002Signer {
     fn default_confidence(&self) -> Confidence {
         Confidence::Likely
     }
+    fn summary(&self) -> &'static str {
+        "An account compared against a stored authority but never required to sign."
+    }
+    fn explain(&self) -> &'static str {
+        include_str!("../../../docs/lints/ACC002-P.md")
+    }
 
     fn run_handlers(&self, handlers: &[Handler]) -> Vec<Finding> {
         let mut out = Vec::new();

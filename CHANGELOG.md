@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `pinoc check --format <human|json|github|sarif>`.
+  - `github` prints a GitHub Actions workflow command per finding, so the pull request is annotated at the file and line, and ends with the usual summary lines.
+  - `sarif` emits SARIF 2.1.0 for code scanning (`github/codeql-action/upload-sarif`), with every code as a rule and its documentation as the help text.
+  - Both give paths from the repository root (`GITHUB_WORKSPACE`, else the nearest `.git`), so a crate below the root, such as `program/`, is annotated on the right file.
+  - Both put the project-wide `NO-HANDLERS` and `UNTRACKED-ACCOUNTS` findings on the crate's `Cargo.toml`.
+  - The exit code is the same for every format.
+- `pinoc check --explain <CODE>` prints what a code catches, how it is detected, its limits, the fix, and a flagged and a clean example, and analyses nothing. The text is `docs/lints/<CODE>.md`, one file per code, which the README links to and SARIF uses as help. The test suite runs every example through `pinoc check`, so an example cannot show behaviour the lint does not have.
+- Planned codes: `DISC002-P` (`duplicate-discriminator`) is added to the planned table.
 - `DISC001-P` (`wrong-discriminator`, deny, definite) in `pinoc check`, in a new **DISC** category for discriminator constants. A `const` marked `// pinoc:discriminator("<preimage>")` must hold the leading bytes of the SHA-256 of its preimage (the Anchor convention: `event:Name`, `account:Name`, `global:snake_name`). A table marked `// pinoc:discriminators("<prefix>", Enum)` has each row checked against the variant whose discriminant is its index, so a variant added, removed or reordered without its row is reported; `snake_case` as a third argument hashes the variant name in snake case. The finding is anchored at the wrong row and gives the right bytes. A marker that cannot be checked is reported with the reason. The enum has to be in the same file as the table. Only marked constants are checked, so a crate with no marker gets the same `pinoc check` output as before.
 - `Category::Disc` (`"disc"`) is a new category value in the `pinoc check` contract, alongside `acc`, `cpi` and `zc`. `DISC001-P` and `wrong-discriminator` are permanent from this release.
 - `sha2` is a new dependency, for `DISC001-P`, the build record's SHA-256 and `pinoc verify`; `bs58` is a new dependency, for reading a program keypair's address.
@@ -23,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The build record (`target/deploy/<name>.build.json`) also holds the artifact's SHA-256 and, for a `--cluster` build, the cluster. Its format is documented as stable, for a test harness to read.
 
 ### Changed
+- `--json` is now the same as `--format json`. Its output is unchanged. It cannot be combined with `--format`.
+- The planned `CPI003-P` is listed as warn, pending a check of current runtime behaviour on same-transaction revival. It was listed as deny with nothing to support that.
+- The planned `ACC004-P` is narrowed: it fires only when two state types share a size, one is deserialized, and no tag is compared on that path. Same-size types alone are common.
+- `src/check/README.md` keeps one line per code and links to its `docs/lints` entry; the long table cells and notes moved there.
+  - The `ACC002-P` and `CPI001-P` entries no longer say a check made in a helper is invisible: helpers in the crate have been read since 0.3.4.
+  - `UNUSED-ALLOW` now has a row.
 - The "comment directly above a `const`" rule that `// pinoc:constant` uses is one helper, shared with `DISC001-P`'s markers, so the two cannot come to disagree about what counts as directly above. A marker name has to end where the comment's name ends: `// pinoc:constants` is not a `pinoc:constant` marker, as before.
 - `pinoc deploy` refuses a program keypair that holds another address than the program's `declare_id!` or `const ID`. `cargo build-sbf` writes a new random keypair at `target/deploy/<name>-keypair.json` when there is none, so on a fresh checkout `pinoc deploy` put the program at an address nothing referred to and reported success. The error names both addresses and says to set `[provider] program_keypair`, or to run `pinoc keys sync` for a new program.
 - With no program keypair, `pinoc deploy` passes the declared address as `--program-id`, which upgrades a program that exists. With no keypair and no declared address it refuses; it used to let `solana` pick a random address.

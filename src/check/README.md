@@ -39,8 +39,9 @@ Two codes report what a run could not analyse, so an empty result is never mista
 
 | Code | id | Reports |
 |---|---|---|
-| `NO-HANDLERS` | `no-handlers` | No handler was found anywhere (or there is no `src/`), so the account and CPI lints analysed nothing; only the struct-layout lints ran. Replaces `✅ No issues found.`. Allow it for a crate that is not a program. |
-| `UNTRACKED-ACCOUNTS` | `untracked-accounts` | One finding listing the handlers whose accounts were not analysed, each with the reason: it stores them in a struct no analysed function reads them back from, or it uses its accounts slice and no account could be bound from it. Checks and uses in those handlers are not reported, so the run is not a clean result for them. Allow it once the limit is acknowledged. |
+| `NO-HANDLERS` | `no-handlers` | No handler was found anywhere (or there is no `src/`), so the account and CPI lints analysed nothing. Replaces `✅ No issues found.`. [More](../../docs/lints/NO-HANDLERS.md) |
+| `UNTRACKED-ACCOUNTS` | `untracked-accounts` | The handlers whose accounts were not analysed, each with the reason. Checks and uses in them are not reported. [More](../../docs/lints/UNTRACKED-ACCOUNTS.md) |
+| `UNUSED-ALLOW` | `unused-allow` | A `// pinoc:allow(CODE)` that matched no finding. Emitted after configuration is applied, so `--deny`/`--allow`/`[check]` do not take it. [More](../../docs/lints/UNUSED-ALLOW.md) |
 
 `--deny all` (or `--deny NO-HANDLERS`) makes CI fail on a run that analysed nothing.
 
@@ -62,16 +63,18 @@ Each finding also carries a **severity** (`deny` fails the check, `warn` is advi
 
 ## Current checks
 
+Each code's full entry (what it catches, how it is detected, its limits, the fix, and a flagged and a clean example) is in [`docs/lints/`](../../docs/lints/), and `pinoc check --explain <CODE>` prints it. The examples are run through `pinoc check` by the test suite.
+
 | Code | id | Severity | Confidence | Flags |
 |---|---|---|---|---|
-| `ACC001-P` | `missing-owner` | deny | likely | An account read as this program's state (data borrowed, or passed to a loader like `Type::load`/`from_bytes`) without checking `owner() == program_id`, letting an attacker pass a look-alike account. Runs on the per-account fact table (`facts/`); an account passed to a function outside the crate is treated as delegated and left alone, and an account identified another way (address compared, found empty, or created by the handler) is not flagged. Fix: check the owner before reading the account's data. |
-| `ACC002-P` | `missing-signer` | warn | likely | An account whose key is checked against a stored authority field (`authority.address() == state.authority`, via `==`/`!=` or `.eq()`/`.ne()`) but never `is_signer()`-checked, so anyone can act as that authority by passing its public address. Runs on the fact table; a delegated account is left alone. `warn` because the syn v1 cannot see a signer enforced in a helper or downstream token CPI. Fix: require `is_signer()` on the authority. |
-| `ACC003-P` | `account-confusion` | warn | heuristic | An account named like a known singleton (`config`/`settings`/`*_config`/`*_settings`) read as trusted state without its key ever being compared to an expected address, letting an attacker substitute a look-alike account with attacker-chosen contents. Runs on the fact table; a delegated account is left alone. `heuristic`, so it is **hidden at the default `likely` threshold** (see the note below); surface it with `--deny ACC003-P` or `confidence_threshold = "heuristic"`. Fix: compare the account's key to the expected address (or derived PDA) before reading it. |
-| `CPI001-P` | `arbitrary-cpi` | warn | likely | `invoke`/`invoke_signed` whose `program_id` comes from a caller-supplied account whose key is never compared to an expected id (`==`/`!=` or an assert/require macro), letting an attacker redirect the call to malicious code. Runs on the fact table: typed-builder CPIs (`CreateAccount { … }.invoke_signed(…)`) and constant/param program ids are ignored, and a delegated program account is left alone. `warn` because the syn v1 cannot see cross-function key checks; promote with `--deny CPI001-P`. Fix: compare the program account's key to the expected id before invoking. |
-| `ZC001-P` | `layout-padding-mismatch` | warn | likely | A `#[repr(C)]` `ShankAccount`/`ShankType` struct whose padded in-memory layout differs from its packed borsh layout, so on-chain zero-copy reads and client (de)serialization disagree. Advisory because it only affects the generated borsh client; a program driven another way is unaffected. Reuses the layout analysis behind the `pinoc build`/`pinoc idl` padding warning. Fix: add explicit `_padding: [u8; N]` fields, or `--deny ZC001-P` to make it blocking. |
-| `ZC002-P` | `unchecked-length-before-cast` | deny | likely | An account whose data is borrowed through an `*_unchecked` accessor (`borrow_data_unchecked`/`borrow_mut_data_unchecked`) with no `data_len()` guard on that account, so a shorter-than-expected account is read past its end. Runs on the per-account fact table (`facts/`); if the account's `data_len()` is read anywhere in the handler it is treated as guarded, and a delegated account is left alone. Fix: check `data_len() >= size_of::<T>()` before the unchecked borrow. |
-| `ZC003-P` | `missing-repr-c` | deny | definite | A `ShankAccount`/`ShankType` struct read zero-copy without `#[repr(C)]` or `#[repr(transparent)]`. The default layout may reorder fields and break the byte mapping the client relies on. Fix: add `#[repr(C)]`. |
-| `DISC001-P` | `wrong-discriminator` | deny | definite | A discriminator constant, marked with `// pinoc:discriminator(..)` or `// pinoc:discriminators(..)`, whose bytes are not the leading bytes of the SHA-256 of the preimage it names. Also reported when the marker cannot be checked (the enum is not in the file, the table and the enum differ in length, a value is not a byte array literal), with the reason. Fix: the finding gives the right bytes. See [Discriminator constants](#discriminator-constants). |
+| `ACC001-P` | `missing-owner` | deny | likely | An account read as this program's state without an owner check. [More](../../docs/lints/ACC001-P.md) |
+| `ACC002-P` | `missing-signer` | warn | likely | An account compared against a stored authority but never required to sign. [More](../../docs/lints/ACC002-P.md) |
+| `ACC003-P` | `account-confusion` | warn | heuristic | A singleton-named account read as trusted state without its key compared. Hidden at the default `likely` threshold. [More](../../docs/lints/ACC003-P.md) |
+| `CPI001-P` | `arbitrary-cpi` | warn | likely | A CPI whose program id comes from an unvalidated caller-supplied account. [More](../../docs/lints/CPI001-P.md) |
+| `ZC001-P` | `layout-padding-mismatch` | warn | likely | A `#[repr(C)]` Shank struct whose padded layout differs from its packed borsh layout. [More](../../docs/lints/ZC001-P.md) |
+| `ZC002-P` | `unchecked-length-before-cast` | deny | likely | Account data borrowed through an `*_unchecked` accessor with no length guard. [More](../../docs/lints/ZC002-P.md) |
+| `ZC003-P` | `missing-repr-c` | deny | definite | A Shank struct read zero-copy without `#[repr(C)]` or `#[repr(transparent)]`. [More](../../docs/lints/ZC003-P.md) |
+| `DISC001-P` | `wrong-discriminator` | deny | definite | A marked discriminator constant that is not the SHA-256 prefix of its preimage. [More](../../docs/lints/DISC001-P.md) |
 
 The struct-layout lints (`ZC001-P`, `ZC003-P`) anchor their finding at the struct's first attribute, so a suppression comment written directly above the item covers it. The flow lints (`ACC001-P`, `ACC002-P`, `ACC003-P`, `ZC002-P`, `CPI001-P`) anchor at the offending statement.
 
@@ -101,35 +104,18 @@ Only markers are checked: a crate with none gets no `DISC001-P` finding, and its
 
 **Same-file limit.** The table's enum has to be in the same file as the table. The lint runs per file (`Lint::run`), and resolving an enum by name across modules would be ambiguous when two modules define one with that name, so the first version keeps to the file and reports an enum it cannot find there. A crate-level pass (`Lint::run_handlers` works over facts from the whole crate) could lift this later, with a rule for the ambiguous case.
 
-<details>
-<summary><strong>Note on <code>ACC002-P</code>: name-match detection</strong></summary>
-
-`ACC002-P` decides an account is "in an authority position" by a **string/name match**: it fires only when the account's key is compared against a field or variable whose name is `authority`, `admin`, `auth`, or ends in `_authority`/`_auth`. This is a deliberate precision-over-recall choice. When it matches, it is very likely a real missing-signer, but it **misses** any authority stored under a different name (`controller`, `owner_key`, `gov`, …), a pure false negative.
-
-The naming-agnostic improvement is to key off **structure** instead: treat "the account's key is compared against a field of a state account that was `load`ed" as the authority signal, regardless of the field's name. The reason we do not do that yet is that it **overfires**: comparing a key against *any* loaded-state field (a stored `mint`, a `bump`, a config value) would then look like an authority check and produce false positives. Doing it safely means also gating on "a privileged effect actually happens in the handler," and the fully precise form (proving a signer check dominates the privileged action, seeing cross-function checks, and resolving PDA-seeds / token-CPI enforcement) needs the type-resolved dylint backend (Phase 5). Until then the name match is kept as-is: fewer, higher-confidence findings at `warn`, promotable with `--deny ACC002-P`.
-
-</details>
-
-<details>
-<summary><strong>Note on <code>ACC003-P</code>: why it is `heuristic` for now</strong></summary>
-
-`ACC003-P` fires when an account whose *name* looks like a global singleton (`config`, `settings`, `*_config`, `*_settings`) is read as trusted state but its key is never compared to an expected address. When the account really is a singleton, that is a genuine account-confusion bug. The problem is the engine cannot tell a **singleton** (there is exactly one, so its key must equal a fixed or derived known address) from a **per-instance** account (there are many, one per caller/pool/position, whose key legitimately varies).
-
-This is not just a per-user issue. In a DeFi program the same shape recurs at several granularities: a **per-pool** config, a **per-position** state, a **per-market** account. Each of those *should* be validated, but by **deriving its PDA and comparing** (from the pool id, position id, owner, …), not by matching a single constant. To a name/shape heuristic, `pool_config` or `position_state` looks identical to a global `config`, so a syn-only pass would over-fire on the per-instance ones. That is why it ships `heuristic` and stays **hidden at the default `likely` threshold**: available to anyone who opts in (`confidence_threshold = "heuristic"` or `--deny ACC003-P`), but not nagging by default.
-
-The move to `likely` comes with the dylint backend (Phase 5), which can **resolve the PDA derivation**: constant seeds mean a singleton (must equal a fixed address), while seeds that include a variable (owner, pool id, position id) mean a per-instance account (must be derived-and-compared, and a `KeyCompared` against that derived value already clears it). Once singleton and per-instance can be told apart from the seeds, the over-firing disappears and the lint can be promoted.
-
-</details>
-
 ## Planned checks
 
 Not yet implemented; codes and intended severity are listed so the suppression contract is known in advance.
 
 | Code | id | Category | Severity | Flags |
 |---|---|---|---|---|
-| `ACC004-P` | `missing-discriminator` | ACC | warn | Deserialize of an equal-size type (cross-referencing the ZC001 size table) with no discriminator check, so one account type is read as another. |
-| `ACC005-P` | `duplicate-mutable-account` | ACC | warn | Two mutably-used account bindings with no `key() != key()` guard between them. |
-| `CPI003-P` | `revival-on-close` | CPI | deny | An account closed by draining lamports without zeroing its data or writing a closed-marker, allowing same-transaction revival. |
+| `DISC002-P` | `duplicate-discriminator` | DISC | deny | Two rows of one marked table, or two marked constants with the same prefix, holding the same bytes. Opt-in through the `DISC001-P` markers. |
+| `ACC004-P` | `missing-discriminator` | ACC | warn | Two or more of the crate's state types share a size, one is deserialized, and nothing on that path reads and compares a tag byte or discriminator, so one account type can be read as another. |
+| `ACC005-P` | `duplicate-mutable-account` | ACC | warn | Two account bindings that both receive lamport or data writes with no `key() != key()` comparison between them, so passing one account twice splits a transfer between "two" accounts that are the same. |
+| `CPI003-P` | `revival-on-close` | CPI | warn, pending | An account closed by draining lamports without zeroing its data or writing a closed-marker, allowing same-transaction revival. Pending a check of what the current runtime does with an account drained to zero lamports within the transaction; dropped if revival is no longer possible. |
+
+Out of scope: a missing writable check. The runtime rejects a write to an account the transaction did not mark writable, so there is nothing for a linter to add.
 
 ## Configuration
 
@@ -171,7 +157,39 @@ pub struct Vault { /* ... */ }
 
 ## Exit code and output
 
-The process exits `1` if any surviving finding is `deny`, else `0`. Advisory findings never change the exit code unless explicitly denied. Human output groups findings with their code, `file:line:col`, evidence, and fix; `--json` emits the same findings as a stable array (the JSON shape is frozen).
+The process exits `1` if any surviving finding is `deny`, else `0`, whatever the output format. Advisory findings never change the exit code unless explicitly denied.
+
+`--format` picks the output:
+
+- **`human`** (the default) groups findings with their code, `file:line:col`, evidence, and fix.
+- **`json`** emits the same findings as a stable array. The JSON shape is frozen. `--json` is the same as `--format json`.
+- **`github`** prints one [workflow command](https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions) per finding: `::error` for deny, `::warning` for warn, `::notice` for info. GitHub then annotates the file and line on the pull request. It ends with the human summary lines.
+- **`sarif`** emits [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html) for `github/codeql-action/upload-sarif` (the Security tab) or another code-scanning tool.
+  - Every code is listed as a rule, with its `docs/lints` entry as the help text, and its confidence as `precision` (`definite` very-high, `likely` high, `heuristic` medium).
+  - No `security-severity` is set: a number per lint would be invented before there is real-program data to ground it.
+
+**Paths:** `github` and `sarif` give paths from the repository root, as GitHub needs, even when `pinoc check` runs in a crate below it (`program/src/lib.rs`, not `src/lib.rs`). The root is `GITHUB_WORKSPACE` when it is set (it is, in Actions), else the nearest directory holding `.git`.
+
+**Placement:** columns are 1-based there. The project-wide findings (`NO-HANDLERS`, `UNTRACKED-ACCOUNTS`), reported at `src:0:0` elsewhere, go on line 1 of the crate's `Cargo.toml`, or without a location when there is none.
+
+**Annotation limits:** GitHub shows at most 10 error and 10 warning annotations per step, and 50 per job. Every finding is still printed in the step's log.
+
+```yaml
+# Fail the job on a deny, and annotate the diff.
+- uses: a91y/pinoc@v0.4.0
+  with: { version: 0.4.0 }
+- run: pinoc check --format github
+  working-directory: program
+
+# Or send the findings to the Security tab. `|| true` lets the upload run when
+# the check fails, so this step is not the gate.
+- run: pinoc check --format sarif > pinoc.sarif || true
+  working-directory: program
+- uses: github/codeql-action/upload-sarif@v3
+  with: { sarif_file: program/pinoc.sarif }
+```
+
+`pinoc check --explain <CODE>` prints a code's `docs/lints` entry and analyses nothing. An unknown code is refused with the list of codes, as `--deny` refuses one.
 
 ### The "below the threshold" line
 
@@ -190,7 +208,10 @@ It means exactly `N` findings *were produced* but held back because their confid
 | `mod.rs` | Discovers and parses source, runs lints, adds the coverage findings, applies config severity, suppression, and the confidence threshold, sets the exit code. |
 | `contract.rs` | `Finding`, the `Lint` trait, and `Severity` / `Confidence` / `Category` / `Backend` / `Span`. The JSON shape is frozen here. |
 | `suppress.rs` | Parses `// pinoc:allow(CODE)` comments and matches them to findings. |
-| `output.rs` | Human and `--json` renderers. |
+| `codes.rs` | Every code the command can report (the registered lints, then `NO-HANDLERS`, `UNTRACKED-ACCOUNTS` and `UNUSED-ALLOW`), with its id, defaults, summary and `docs/lints` text. Config validation, `--explain` and the SARIF rules read it. |
+| `output.rs` | The `human`, `json`, `github` and `sarif` renderers. |
+| `locate.rs` | A finding's path from the repository root and 1-based column, for `github` and `sarif`. |
 | `facts/mod.rs` | Per-account fact table, built over the whole crate: for each handler, how each account is validated and used, including through helper functions and from the functions that read stored accounts back, plus the program-id source of each `invoke`. Account/CPI lints run on this. |
 | `lints/mod.rs` | The lint registry and span helpers. |
-| `lints/acc001_owner.rs`, `lints/acc002_signer.rs`, `lints/acc003_confusion.rs`, `lints/cpi001_arbitrary_cpi.rs`, `lints/zc001_padding.rs`, `lints/zc002_length.rs`, `lints/zc003_repr_c.rs` | The individual checks. |
+| `lints/acc001_owner.rs`, `lints/acc002_signer.rs`, `lints/acc003_confusion.rs`, `lints/cpi001_arbitrary_cpi.rs`, `lints/zc001_padding.rs`, `lints/zc002_length.rs`, `lints/zc003_repr_c.rs`, `lints/disc001_discriminator.rs` | The individual checks. |
+| `../../docs/lints/<CODE>.md` | One entry per code: what it catches, how, its limits, the fix, and a flagged and a clean example. The test suite runs the examples through `pinoc check`. |

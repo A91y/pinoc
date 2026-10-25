@@ -1,0 +1,8 @@
+::error file=check_free/src/args.rs,line=4,col=1,title=ZC003-P missing-repr-c::`NoReprState` derives ShankAccount/ShankType (read zero-copy) but is not #[repr(C)]; the default layout may reorder fields. Fix: add #[repr(C)]
+::warning file=check_free/src/state.rs,line=6,col=1,title=ZC001-P layout-padding-mismatch::`PaddedVault` has 7 byte(s) of implicit padding (layout 48 vs packed 41); zero-copy reads won't match its packed borsh form. Fix: add explicit `_padding: [u8; 7]` field(s)
+::error file=check_free/src/handlers.rs,line=9,col=22,title=ACC001-P missing-owner::account `vault` is read as state without checking its owner; an attacker can pass a look-alike account. Fix: check `vault.owner() == program_id` before reading its data
+::warning file=check_free/src/handlers.rs,line=70,col=8,title=ACC002-P missing-signer::account `authority` is checked against a stored authority but never verified as a signer; anyone can pass this address without signing. Fix: require `authority.is_signer()` before trusting it as the authority
+::warning file=check_free/src/handlers.rs,line=151,col=5,title=CPI001-P arbitrary-cpi::account `target` is invoked as a program without checking its key against an expected id; an attacker can point it at malicious code. Fix: compare `target.key()` to the expected program id before invoking
+::error file=check_free/src/handlers.rs,line=55,col=31,title=ZC002-P unchecked-length-before-cast::account `vault` is borrowed unchecked without a `data_len()` guard; a shorter account reads past its end. Fix: check `vault.data_len() >= size_of::<T>()` before the unchecked borrow
+3 deny, 3 warn
+1 lower-confidence finding (ACC003-P) below the `likely` threshold hidden; lower `confidence_threshold` (or `--deny <code>`) to show them.

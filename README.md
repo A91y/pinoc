@@ -288,11 +288,13 @@ Both write nothing, list each stale file, and exit nonzero.
 
 ## Linting
 
-`pinoc check` statically lints a program for Solana-specific safety issues that rustc, clippy, and rust-analyzer do not model: account ownership and signer checks, cross-program invocation safety, zero-copy memory layout, and discriminator constants that are not the hash they claim to be (`// pinoc:discriminators("event:", EventKind)`). Configurable severity, inline `// pinoc:allow(CODE)` suppression, and `--json` output for CI. A run that finds no handlers to analyse says so (`NO-HANDLERS`) instead of reporting a clean result.
+`pinoc check` statically lints a program for Solana-specific safety issues that rustc, clippy, and rust-analyzer do not model: account ownership and signer checks, cross-program invocation safety, zero-copy memory layout, and discriminator constants that are not the hash they claim to be (`// pinoc:discriminators("event:", EventKind)`). Configurable severity, inline `// pinoc:allow(CODE)` suppression, and output for CI as JSON, GitHub annotations or SARIF (`--format json|github|sarif`). A run that finds no handlers to analyse says so (`NO-HANDLERS`) instead of reporting a clean result.
 
 ```bash
 pinoc check                  # report findings, exit nonzero on a deny
 pinoc check --deny '*'       # promote every check to a hard failure
+pinoc check --format github  # annotate the pull request in GitHub Actions
+pinoc check --explain ACC001-P   # what a code means, with a flagged and a clean example
 ```
 
 - Lint codes, configuration, and suppression: [src/check/README.md](src/check/README.md)
@@ -307,7 +309,7 @@ From 0.4.0, release binaries are attached to each GitHub release, so CI does not
     version: 0.4.0            # pin it: a different pinoc can write a different IDL
     solana-version: <x.y.z>   # optional: also install this Agave release (solana, cargo build-sbf)
 - run: pinoc idl --check && pinoc client generate --check --auto-install
-- run: pinoc check
+- run: pinoc check --format github   # annotates the pull request
 - run: pinoc test --all-clusters   # needs solana-version
 ```
 
