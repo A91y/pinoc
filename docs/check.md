@@ -19,7 +19,7 @@ pinoc check --explain ACC001-P   # what a code means, with a flagged and a clean
 
 ## Codes
 
-Each code's entry (what it catches, how, its limits, the fix, and a flagged and a clean example) is in [`lints/`](lints/), and `pinoc check --explain <CODE>` prints it. The test suite runs every example through `pinoc check`.
+Each code's entry (what it catches, how, its limits, the fix, and a flagged and a clean example) is in [`lints/`](lints/). `pinoc check --explain <CODE>` prints it and analyses nothing; an unknown code is refused with the list of codes, as `--deny` refuses one. The test suite runs every example through `pinoc check`.
 
 | Code | id | Severity | Confidence | Flags |
 |---|---|---|---|---|
@@ -32,7 +32,7 @@ Each code's entry (what it catches, how, its limits, the fix, and a flagged and 
 | `ZC003-P` | `missing-repr-c` | deny | definite | A Shank struct read zero-copy without `#[repr(C)]` or `#[repr(transparent)]`. [More](lints/ZC003-P.md) |
 | `DISC001-P` | `wrong-discriminator` | deny | definite | A marked discriminator constant that is not the SHA-256 prefix of its preimage. [More](lints/DISC001-P.md) |
 
-**Coverage and meta codes** report what a run could not analyse, so an empty result is never mistaken for a clean one. All three are `warn`/`definite`.
+**Coverage and meta codes** report what a run could not analyse, so an empty result is never mistaken for a clean one. All three are `warn`/`definite` and appear in every output format. `NO-HANDLERS` and `UNTRACKED-ACCOUNTS` are configured like any other code (`--deny`, `--allow`, `[check]`).
 
 | Code | id | Reports |
 |---|---|---|
@@ -46,10 +46,10 @@ Each code's entry (what it catches, how, its limits, the fix, and a flagged and 
 
 | Code | id | Severity | Flags |
 |---|---|---|---|
-| `DISC002-P` | `duplicate-discriminator` | deny | Two rows of one marked table, or two marked constants with the same prefix, holding the same bytes. |
+| `DISC002-P` | `duplicate-discriminator` | deny | Two rows of one marked table, or two marked constants with the same prefix, holding the same bytes. Opt-in through the `DISC001-P` markers. |
 | `ACC004-P` | `missing-discriminator` | warn | Two of the crate's state types share a size, one is deserialized, and no tag or discriminator is compared on that path. |
-| `ACC005-P` | `duplicate-mutable-account` | warn | Two bindings that both receive lamport or data writes with no `key() != key()` comparison between them. |
-| `CPI003-P` | `revival-on-close` | warn, pending | An account closed by draining lamports without zeroing its data or writing a closed-marker. Pending a check of whether the current runtime still allows same-transaction revival. |
+| `ACC005-P` | `duplicate-mutable-account` | warn | Two bindings that both receive lamport or data writes with no `key() != key()` comparison between them, so passing one account twice splits a transfer between "two" accounts that are the same. |
+| `CPI003-P` | `revival-on-close` | warn, pending | An account closed by draining lamports without zeroing its data or writing a closed-marker. Pending a check of whether the current runtime still allows same-transaction revival; dropped if it does not. |
 
 **Identifiers.** Every code has two identifiers, both frozen once released:
 - the **code** (`ZC001-P`), used in suppression and configuration; the `-P` marks a pinoc code;
@@ -63,7 +63,8 @@ Each code's entry (what it catches, how, its limits, the fix, and a flagged and 
 
 **Finding properties:**
 - a **severity**: `deny` fails the check, `warn` is advisory, and `info` is informational;
-- a **confidence**: `heuristic` < `likely` < `definite`.
+- a **confidence**: `heuristic` < `likely` < `definite`;
+- a **backend**: `syn` today.
 
 ## What gets analysed
 
@@ -91,14 +92,14 @@ A check inside a macro counts, except in logging and formatting macros (`msg!`, 
   - A method call (`self.check()`, `state.verify(vault)`) is matched against every method of that name in the crate, and counts for what all of them do.
   - **Delegated accounts:** a call that names no single function in the crate, or one outside it, leaves the account delegated, and the lints stay quiet about it rather than guess.
 - **Stored accounts are followed.** When a handler moves its accounts into its own type (`Ok(Self { vault, authority })`), they are followed into every function that reaches them through it: `self.vault`, `self.accounts.vault`, `ix.accounts.vault`. A finding on such an account says where it was used and where it was bound.
-- **Instructions that share an account list are checked separately.** With `Sell { accounts }` and `Unwind { inner: Sell }`, each is analysed with its own methods, the functions that are no instruction's method, and only those methods of the wrapped type it calls. A check in `Sell::check` does not count for `Unwind` unless `Unwind` calls it. A finding that depends on this names the instruction.
+- **Instructions that share an account list are checked separately.** With `Sell { accounts }` and `Unwind { inner: Sell }`, each is analysed with its own methods, the functions that are no instruction's method, and only those methods of the wrapped type it calls. A check in `Sell::check` does not count for `Unwind` unless `Unwind` calls it. A finding that depends on this names the instruction: ``(in `Sell::pool_reserve`, as part of `Unwind`, bound in `SellAccounts::load`)``.
 
-**Known limits:**
+**Known limits** of the analysis, which works on syntax (the `syn` backend):
 - **Source:** only files under `./src` are read.
 - **No type resolution:** methods are matched by name and helpers by path. Two functions a path cannot tell apart are treated as unknown, and two same-named methods that differ count only for what they agree on.
-- **Unbound accounts:** accounts taken from the slice any other way (`chunks`, `iter().find(..)`, a run-time index) are not bound. A handler that uses its slice and binds nothing from it is listed in `UNTRACKED-ACCOUNTS`.
+- **Unbound accounts:** accounts taken from the slice any other way (`chunks`, `iter().find(..)`, a run-time index) are not bound. A handler that uses its slice and binds nothing from it is listed in `UNTRACKED-ACCOUNTS`; one that binds some accounts and takes others this way is not.
 - **Wrapped types:** which methods of a wrapped type an instruction reaches is decided by the names it calls, not by a call graph.
-- **Order and paths:** a check counts wherever it appears in the handler or its helpers. pinoc does not prove it runs before the use it guards, or on every path.
+- **Order and paths:** a check counts wherever it appears in the handler or its helpers. pinoc does not prove it runs before the use it guards, or on every path: a helper that checks only under a condition is treated as checking.
 - **Owner target:** an owner check counts whichever owner it names.
 - **Authority names:** `ACC002-P` recognises an authority by name; add the program's own in `authority_names`.
 - **Nested structs:** `ZC001-P` skips a struct with nested or foreign-typed fields.

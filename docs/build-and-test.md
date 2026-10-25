@@ -65,7 +65,7 @@ pinoc test --features test-default -- parses_the_fixture -- --exact --nocapture
 **Other flags:**
 - `--cluster <name>` builds and tests with a [`[clusters]`](deploy.md#clusters) entry's features.
 - `--all-clusters` runs the suite once per distinct `[clusters]` feature set, reports every run, and fails if any failed.
-- `--no-build` skips the SBF build; see [What `--no-build` tests](#what---no-build-tests).
+- `--no-build` skips the SBF build and tests against the existing `target/deploy/*.so`, for iterating on tests that do not load it; see [What `--no-build` tests](#what---no-build-tests).
 - `--arch` sets the [SBPF version](#sbpf-version).
 
 ### Test configuration

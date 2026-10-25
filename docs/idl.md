@@ -45,7 +45,7 @@ Either `codama` or `codama-macros` enables the native path. Both export the same
 
 The panic handler decides which one fits. `default_panic_handler!()` defines no handler of its own and relies on `std` being linked, so with only proc-macro dependencies it fails with "`#[panic_handler]` function required, but not found". Choosing `default_panic_handler!()` is choosing to link `std`. The `--with-example` scaffold does this, since it depends on `shank` (see [Shank and `no_std`](#shank-and-no_std)).
 
-Detection reads `[dependencies]` and every `[target.'cfg(..)'.dependencies]` table, and matches a renamed dependency on its `package` (`macros = { package = "codama-macros", version = "0.9" }`). When a `Codama*` derive is present but neither crate is a dependency, `pinoc idl` takes the shim path and says so.
+Detection reads `[dependencies]` and every `[target.'cfg(..)'.dependencies]` table, and matches a renamed dependency on its `package` (`macros = { package = "codama-macros", version = "0.9" }`). When a `Codama*` derive is present but neither crate is a dependency, `pinoc idl` takes the shim path and says so: `(Codama derives found, but neither `codama` nor `codama-macros` is a dependency)`.
 
 ### Codama versions
 
@@ -57,7 +57,7 @@ pinoc extracts with **codama 0.13.2**. A `#[codama(..)]` directive is parsed twi
 
 `pinoc idl` prints a note whenever the program's `codama-macros` is a different minor release than the extractor, saying which case applies. Bumping `codama-macros` does not change what the program does. The `.so` keeps its length and behaviour, though the compiler may lay the code out differently, so builds across a bump need not be byte-identical.
 
-codama 0.13 leaves out lists that are empty, which the Rust renderer does not expect; an instruction with no accounts would render as `Vec::with_capacity(NaN + ..)`. pinoc writes those empty lists back into `<name>.codama.json`, so both renderers read it.
+codama 0.13 writes a newer IDL (spec 1.8) and leaves out lists that are empty, which the Rust renderer does not expect; an instruction with no accounts would render as `Vec::with_capacity(NaN + ..)`. pinoc writes those empty lists back into `<name>.codama.json`, so both renderers read it.
 
 ### Annotating for Codama
 
@@ -117,15 +117,15 @@ pinoc writes it to `<name>.codama.json` as spelled, keeping the variant's code a
 - **Valid names:** the name must be camelCase.
 - **Collisions:** one that collides with another variant is refused, because Codama would keep only one of the two errors without saying so.
 - **Without `name`:** variants keep Codama's conversion.
-- **Reporting:** `pinoc idl` prints how many names it took from `name`.
+- **Reporting:** `pinoc idl` prints how many names it took from `name`; a `name` it prints nothing about was left to Codama.
 
-This applies to error variants only. `name` on an account, a type, a field or an argument is left as Codama writes it, because those names are referred to from other nodes (links, PDA seeds, account defaults), and renaming one after extraction would break the references.
+This applies to error variants only. `name` on an account, a type, a field or an argument is left as Codama writes it, re-cased (`#[codama(account(name = "notAMint"))]` gives `notAmint`), because those names are referred to from other nodes (links, PDA seeds, account defaults), and renaming one after extraction would break the references.
 
 A variant with `#[codama(skip)]` is left out of `<name>.codama.json`, and a `name` on it names nothing. The other variants' codes do not move. `pinoc idl` lists the variants left out this way.
 
 ## Constants
 
-Neither extractor can declare a program constant from source, so pinoc exports a `const` that carries a marker comment directly above it:
+Neither extractor can declare a program constant from source (Codama has a `constantNode` but no directive that builds one), so pinoc exports a `const` that carries a marker comment directly above it:
 
 ```rust
 /// Open positions a trader may hold.
@@ -149,7 +149,7 @@ Each constant is written to `constants` in `<name>.json` (`{name, type, value}`)
 - a type that is not an integer;
 - a value that does not fit, or that pinoc cannot evaluate;
 - a value beyond 2^53 (an IDL number is a JSON number, which a JavaScript client reads as a double);
-- a marker that is not directly above a `const`.
+- a marker that is not directly above a `const` (the error names the marker's file and line).
 
 Only integers are supported.
 

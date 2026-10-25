@@ -16,7 +16,7 @@ The repository is a GitHub Action that installs a pinned version:
 - **Checksums:** the action checks the binary against the release's SHA-256.
 - **No prebuilt binary:** for an older version, or a platform without one, it falls back to `cargo install`.
 - **Version check:** it confirms `pinoc --version` matches.
-- **Outside Actions:** `cargo binstall pinoc --version <v>` uses the same binaries.
+- **Outside Actions:** `cargo binstall pinoc --version <v>` uses the same binaries, and likewise compiles from source when there is none.
 
 Pin the version. A different pinoc can write a different IDL or client, so a bump means regenerating the committed files in the same change.
 

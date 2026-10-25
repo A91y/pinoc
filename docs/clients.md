@@ -85,7 +85,7 @@ Every run prints the versions it rendered with, and checks the installed tree fi
 - **It came from this pinoc's lock.** pinoc records the lock an install came from (`.pinoc-codama/installed-lock.json`). A tree installed by another pinoc version, or by a hand-run `npm install`, is not used, so upgrading pinoc across a lock change needs `--auto-install` once.
 - **It has not changed since.** `npm ci` verifies integrity hashes only while installing, so pinoc also records a fingerprint of every installed file (`.pinoc-codama/installed-tree`) and compares it on each run. An edited, added or removed file, or a cache that restored a different tree, is refused. This notices a change; it is not a defence against someone who rewrites the fingerprint too.
 
-Either way the command stops before rendering and asks for `--auto-install`, which reinstalls. A hand-run `npm ci` inside `.pinoc-codama/` restores the same tree and is accepted. Each output directory has its own `.pinoc-codama/`, so a Rust and a TypeScript client install two `node_modules` trees, about 35 MB each.
+Either way the command stops before rendering and asks for `--auto-install`, which reinstalls. A hand-run `npm ci` inside `.pinoc-codama/` restores the same tree and is accepted. Each output directory has its own `.pinoc-codama/`, and the two languages use different renderer packages, so a Rust and a TypeScript client install two `node_modules` trees, about 35 MB each.
 
 ## CPI variants
 
@@ -102,7 +102,7 @@ pinoc client generate --no-cpi     # never generate them
 
 ## Program-derived addresses
 
-When the IDL declares PDAs, the codama Rust client gets `find_program_address` helpers on its accounts. `solana-pubkey` provides the derivation functions only behind its `curve25519` feature, so the generated `Cargo.toml` enables it when the client uses them. Without it the client would fail to build with `E0599: no function or associated item named create_program_address found for struct Pubkey`, which does not mention features.
+When the IDL declares PDAs, the codama Rust client gets `find_program_address` helpers on its accounts. `solana-pubkey` provides the derivation functions only behind its `curve25519` feature, so the generated `Cargo.toml` enables it when the client uses them, and leaves the dependency plain otherwise. Without it the client would fail to build with `E0599: no function or associated item named create_program_address found for struct Pubkey`, which does not mention features.
 
 ## Enums with explicit discriminants
 

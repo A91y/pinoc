@@ -13,7 +13,8 @@ Only marked constants are checked. A crate with no marker gets no finding.
   - Row `i` is checked against the variant whose discriminant is `i` (the declared value, or one more than the previous variant's), so a variant added, removed or reordered without its row is reported.
   - A third argument, `snake_case`, hashes the variant name in snake case.
 - **Length:** each row's own length, 1 to 32 bytes.
-- **Uncheckable markers:** reported with the reason. Examples: the enum is not in the file, the row and variant counts differ, a discriminant is not an integer literal, a value is not a byte array literal.
+- **Uncheckable markers:** reported with the reason. Examples: the enum is not in the file, the row and variant counts differ, a discriminant is not an integer literal, no variant has a row's index, a value is not a byte array literal.
+- **Placement:** the finding is anchored at the wrong row.
 - **Marker names:** `pinoc:discriminator` and `pinoc:discriminators` are told apart by the whole name.
 
 ## Limits
