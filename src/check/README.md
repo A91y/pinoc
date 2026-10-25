@@ -53,10 +53,10 @@ Every check has two stable identifiers, frozen once released:
 
 Codes are namespaced by category:
 
-- **ACC** - account validation (owner, signer, key, discriminator).
+- **ACC** - account validation (owner, signer, key, account discriminator check).
 - **CPI** - cross-program invocation and account lifecycle.
 - **ZC** - zero-copy memory layout.
-- **DISC** - discriminator constants.
+- **DISC** - discriminator constants: that the bytes a program writes are the hash they claim to be. Checking an account's discriminator at run time before trusting its data is account validation, and belongs in ACC.
 
 Each finding also carries a **severity** (`deny` fails the check, `warn` is advisory, `info`), a **confidence** (`heuristic` < `likely` < `definite`), and a backend (`syn` today).
 
@@ -93,7 +93,13 @@ const DISCRIMINATORS: [[u8; 8]; 25] = [
 ];
 ```
 
-In the table form, row `i` is checked against the variant of the enum whose discriminant is `i` (the declared value, or one more than the previous variant's), so a variant added, removed or reordered without its row is reported. The enum has to be in the same file as the table. A third argument, `snake_case`, hashes the variant name in snake case (`// pinoc:discriminators("global:", Instruction, snake_case)`). The discriminator length is the row's own (1 to 32 bytes). The finding is anchored at the wrong row, and its fix gives the right bytes.
+In the table form, row `i` is checked against the variant of the enum whose discriminant is `i` (the declared value, or one more than the previous variant's), so a variant added, removed or reordered without its row is reported. A third argument, `snake_case`, hashes the variant name in snake case (`// pinoc:discriminators("global:", Instruction, snake_case)`). The discriminator length is the row's own (1 to 32 bytes). The finding is anchored at the wrong row, and its fix gives the right bytes.
+
+A marker that cannot be checked is reported, never skipped, with the reason: the enum is not in the file, the table has more or fewer rows than the enum has variants, a variant's discriminant is not an integer literal, no variant has a row's index, or a value is not a byte array literal (a row written as another const's name, say). `pinoc:discriminator` and `pinoc:discriminators` are told apart by the whole name, so neither form is read as the other.
+
+Only markers are checked: a crate with none gets no `DISC001-P` finding, and its `pinoc check` output is unchanged.
+
+**Same-file limit.** The table's enum has to be in the same file as the table. The lint runs per file (`Lint::run`), and resolving an enum by name across modules would be ambiguous when two modules define one with that name, so the first version keeps to the file and reports an enum it cannot find there. A crate-level pass (`Lint::run_handlers` works over facts from the whole crate) could lift this later, with a rule for the ambiguous case.
 
 <details>
 <summary><strong>Note on <code>ACC002-P</code>: name-match detection</strong></summary>

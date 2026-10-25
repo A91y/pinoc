@@ -1,5 +1,6 @@
 use crate::check::contract::{Backend, Category, Confidence, Finding, Lint, ParsedFile, Severity};
 use crate::check::lints::to_span;
+use crate::markers::marker_above;
 use heck::ToSnakeCase;
 use sha2::{Digest, Sha256};
 use syn::punctuated::Punctuated;
@@ -21,10 +22,13 @@ use syn::{Expr, Item, ItemConst, Lit, Token};
 ///
 /// In the table form, row `i` is checked against the variant of the enum whose
 /// discriminant is `i`, so the enum and the table cannot drift apart. A third
-/// argument, `snake_case`, hashes the variant name in snake case.
+/// argument, `snake_case`, hashes the variant name in snake case. The enum has
+/// to be in the same file: the lint runs per file, and a name looked up across
+/// modules could name two enums. A marker that cannot be checked is reported.
 pub struct Disc001Discriminator;
 
-const MARKER: &str = "pinoc:discriminator";
+const ONE: &str = "pinoc:discriminator";
+const TABLE: &str = "pinoc:discriminators";
 
 impl Lint for Disc001Discriminator {
     fn code(&self) -> &'static str {
@@ -66,16 +70,20 @@ impl Lint for Disc001Discriminator {
         };
 
         for item in consts {
-            let Some(marker) = marker_above(item, &lines) else {
+            // Each name matches only itself, so neither form is read as the other.
+            let marker = marker_above(item, &lines, TABLE)
+                .map(|(_, args)| (TABLE, args))
+                .or_else(|| marker_above(item, &lines, ONE).map(|(_, args)| (ONE, args)));
+            let Some((used, args)) = marker else {
                 continue;
             };
             let name = &item.ident;
-            let rows = match check_const(item, &marker, &file.ast.items) {
+            let rows = match check_const(item, used == TABLE, args, &file.ast.items) {
                 Ok(rows) => rows,
                 Err(reason) => {
                     finding(
                         item.const_token.span(),
-                        format!("`// {MARKER}..` above `{name}` cannot be checked: {reason}"),
+                        format!("`// {used}` above `{name}` cannot be checked: {reason}"),
                         None,
                     );
                     continue;
@@ -121,8 +129,13 @@ enum Marker {
     },
 }
 
-fn check_const(item: &ItemConst, marker: &str, items: &[Item]) -> Result<Vec<Row>, String> {
-    let marker = parse_marker(marker)?;
+fn check_const(
+    item: &ItemConst,
+    table: bool,
+    args: Option<&str>,
+    items: &[Item],
+) -> Result<Vec<Row>, String> {
+    let marker = parse_marker(table, args)?;
     let name = item.ident.to_string();
     match marker {
         Marker::One(preimage) => {
@@ -178,16 +191,15 @@ fn check_const(item: &ItemConst, marker: &str, items: &[Item]) -> Result<Vec<Row
     }
 }
 
-fn parse_marker(rest: &str) -> Result<Marker, String> {
-    let usage = format!("expected `{MARKER}(\"<preimage>\")` or `{MARKER}s(\"<prefix>\", Enum)`");
-    let (table, args) = if let Some(args) = rest.strip_prefix("s(") {
-        (true, args)
-    } else if let Some(args) = rest.strip_prefix('(') {
-        (false, args)
+fn parse_marker(table: bool, args: Option<&str>) -> Result<Marker, String> {
+    let usage = if table {
+        format!(
+            "expected `{TABLE}(\"<prefix>\", Enum)` or `{TABLE}(\"<prefix>\", Enum, snake_case)`"
+        )
     } else {
-        return Err(usage);
+        format!("expected `{ONE}(\"<preimage>\")`")
     };
-    let args = args.strip_suffix(')').ok_or_else(|| usage.clone())?;
+    let args = args.ok_or_else(|| usage.clone())?;
     let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
     let args: Vec<Expr> = syn::parse::Parser::parse_str(parser, args)
         .map_err(|_| usage.clone())?
@@ -315,22 +327,6 @@ fn collect_consts<'a>(items: &'a [Item], out: &mut Vec<&'a ItemConst>) {
             _ => {}
         }
     }
-}
-
-/// The text after `pinoc:discriminator` in a `//` comment directly above the
-/// const (above its doc comments and attributes, or among them).
-fn marker_above(item: &ItemConst, lines: &[&str]) -> Option<String> {
-    let keyword = item.const_token.span().start().line.checked_sub(1)?;
-    let mut top = item.span().start().line.checked_sub(1)?.min(keyword);
-    while top > 0 && lines.get(top - 1)?.trim().starts_with("//") {
-        top -= 1;
-    }
-    (top..keyword).find_map(|index| {
-        let comment = lines.get(index)?.trim().strip_prefix("//")?.trim();
-        comment
-            .strip_prefix(MARKER)
-            .map(|rest| rest.trim().to_string())
-    })
 }
 
 #[cfg(test)]

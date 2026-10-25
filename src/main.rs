@@ -6,6 +6,7 @@ mod client_gen;
 mod commands;
 mod config;
 mod idl;
+mod markers;
 mod templates;
 
 use commands::client::ClientCommands;

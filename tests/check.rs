@@ -323,3 +323,77 @@ fn the_hidden_findings_line_names_their_codes() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// One case per file: a passing table, a wrong byte, a reordered variant, a
+/// row/variant count mismatch, a non-literal row, the single form, snake_case,
+/// and a wrong row under an inline allow.
+#[test]
+fn discriminator_constants_are_checked_against_their_preimages() {
+    let all = findings("check_discriminators", &[]);
+    let disc: Vec<(&str, u64, &str, Option<&str>)> = all
+        .iter()
+        .filter(|f| f["code"] == "DISC001-P")
+        .map(|f| {
+            assert_eq!(f["id"], "wrong-discriminator");
+            assert_eq!(f["severity"], "deny");
+            assert_eq!(f["confidence"], "definite");
+            (
+                f["span"]["file"].as_str().unwrap(),
+                f["span"]["line"].as_u64().unwrap(),
+                f["evidence"].as_str().unwrap(),
+                f["fix"].as_str(),
+            )
+        })
+        .collect();
+    let deposit = "[62, 205, 242, 175, 244, 169, 136, 52]";
+    let withdraw = "[192, 241, 201, 217, 70, 150, 90, 247]";
+    let vault = "[211, 8, 232, 43, 2, 152, 117, 119]";
+    let pool = "[241, 154, 109, 4, 17, 177, 109, 188]";
+    let fix = |b: &str| format!("replace it with {b}");
+    let fixes = [fix(withdraw), fix(deposit), fix(pool)];
+    assert_eq!(
+        disc,
+        [
+            (
+                "src/count.rs",
+                9,
+                "`// pinoc:discriminators` above `DISCRIMINATORS` cannot be checked: `EventKind` has 3 variants and the table 2 rows",
+                None
+            ),
+            (
+                "src/non_literal.rs",
+                10,
+                "`// pinoc:discriminators` above `DISCRIMINATORS` cannot be checked: a value is not an array literal of bytes",
+                None
+            ),
+            (
+                "src/reordered.rs",
+                9,
+                &*format!("`DISCRIMINATORS[0]` (`EventKind::Withdraw`) is {deposit}, but sha256(\"event:Withdraw\")[..8] is {withdraw}"),
+                Some(&*fixes[0])
+            ),
+            (
+                "src/reordered.rs",
+                10,
+                &*format!("`DISCRIMINATORS[1]` (`EventKind::Deposit`) is {withdraw}, but sha256(\"event:Deposit\")[..8] is {deposit}"),
+                Some(&*fixes[1])
+            ),
+            (
+                "src/single.rs",
+                9,
+                &*format!("`POOL` is {vault}, but sha256(\"account:Pool\")[..8] is {pool}"),
+                Some(&*fixes[2])
+            ),
+            (
+                "src/wrong_byte.rs",
+                10,
+                &*format!("`DISCRIMINATORS[1]` (`EventKind::Withdraw`) is [193, 241, 201, 217, 70, 150, 90, 247], but sha256(\"event:Withdraw\")[..8] is {withdraw}"),
+                Some(&*fixes[0])
+            ),
+        ]
+    );
+
+    // The allow in allowed.rs was used, so it is not reported as unused.
+    let text = stdout(&pinoc(&fixture("check_discriminators"), &["check"]));
+    assert!(!text.contains("allowed.rs"), "{text}");
+}
