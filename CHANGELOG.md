@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-25
+
 ### Added
 - `pinoc check --format <human|json|github|sarif>`.
   - `github` prints a GitHub Actions workflow command per finding, so the pull request is annotated at the file and line, and ends with the usual summary lines.
