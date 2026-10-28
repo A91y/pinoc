@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-29
+
 ### Fixed
 - `pinoc verify --cluster <name>` refuses an artifact whose build record says it was built for another `[clusters]` entry, as `pinoc deploy` does, and names the build to make. It used to compare the artifact with the chain anyway and report that the deployed program was not the local one, which reads as a deploy being owed.
 - The on-chain hash `pinoc verify` prints is the deployed program's own: the account's bytes up to the length the program's ELF headers give. It used to be the local artifact's hash when the two matched, and the hash of the account with every trailing zero removed when they did not. An SBF program ends in zero bytes of its own, so that second hash was of a truncated program, and the same deployment showed two different hashes depending on the local file.
