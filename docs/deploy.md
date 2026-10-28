@@ -60,8 +60,9 @@ upgrade_authority = "~/.config/solana/admin.json"   # optional
 ## Verifying a deploy
 
 `pinoc verify [--cluster <name>] [--program-id <ADDRESS>]` downloads the deployed program (`solana program dump`) and compares it with the local artifact.
+- **Cluster:** with a `[clusters]` entry, an artifact whose build record says it was built for another cluster is refused before anything is downloaded, the same check `pinoc deploy` makes.
 - **Padding:** the zero-filled space a program account has past the program is allowed for.
-- **Output:** both SHA-256 hashes, and, when the build record matches, the features and cluster the deployed build was made with.
+- **Output:** both SHA-256 hashes, and, when the build record matches the artifact, the features and cluster it was built with. The on-chain hash covers the program as its ELF headers give its length, so it is the same on every run whatever the local file is, and can be quoted in a deploy record.
 - **Exit code:** nonzero when they differ, so it can follow every deploy or upgrade.
 
 The address is the one declared under `src/` unless `--program-id` is given.

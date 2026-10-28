@@ -324,6 +324,9 @@ pub fn run_verify(args: VerifyArgs) -> Result<()> {
         target.url,
         so_path.display()
     );
+    if let Some(profile) = &target.profile {
+        check_built_for_cluster(&so_path, profile, &target.clusters)?;
+    }
 
     let dump =
         std::env::temp_dir().join(format!("pinoc-verify-{}-{address}.so", std::process::id()));
@@ -344,41 +347,40 @@ pub fn run_verify(args: VerifyArgs) -> Result<()> {
     let _ = fs::remove_file(&dump);
     let onchain = onchain?;
 
-    let local_hash = sha256_hex(&local);
-    println!("   local    {local_hash}  {} bytes", local.len());
+    let local_line = format!("   local    {}  {} bytes", sha256_hex(&local), local.len());
+    let program = deployed_program(&onchain);
+    let mut onchain_line = format!(
+        "   on chain {}  {} bytes",
+        sha256_hex(program),
+        program.len()
+    );
+    if onchain.len() > program.len() {
+        onchain_line.push_str(&format!(
+            " (the program account holds {}; the rest is unused space, all zero)",
+            onchain.len()
+        ));
+    }
+    println!("{local_line}");
+    if let Recorded::Yes(record) = read_build_record(&so_path) {
+        let features = if record.features.is_empty() {
+            "no features".to_string()
+        } else {
+            format!("--features {}", record.features.join(","))
+        };
+        let cluster = record
+            .cluster
+            .map(|c| format!(", for cluster `{c}`"))
+            .unwrap_or_default();
+        println!("   built by pinoc with {features}{cluster}");
+    }
+    println!("{onchain_line}");
     match compare_deployed(&local, &onchain) {
         Deployed::Same => {
-            println!("   on chain {local_hash}  {} bytes", local.len());
-            if onchain.len() > local.len() {
-                println!(
-                    "   (the program account holds {} bytes; the rest is unused space, all zero)",
-                    onchain.len()
-                );
-            }
-            if let Recorded::Yes(record) = read_build_record(&so_path) {
-                let features = if record.features.is_empty() {
-                    "no features".to_string()
-                } else {
-                    format!("--features {}", record.features.join(","))
-                };
-                let cluster = record
-                    .cluster
-                    .map(|c| format!(", for cluster `{c}`"))
-                    .unwrap_or_default();
-                println!("   built by pinoc with {features}{cluster}");
-            }
             println!("✅ The deployed program is {}", so_path.display());
             Ok(())
         }
         Deployed::Different => {
-            let trimmed = trim_trailing_zeros(&onchain);
-            anyhow::bail!(
-                "The program at {address} is not {}.\n   local    {local_hash}  {} bytes\n   on chain {}  {} bytes (trailing zeros dropped)",
-                so_path.display(),
-                local.len(),
-                sha256_hex(trimmed),
-                trimmed.len()
-            )
+            anyhow::bail!("The program at {address} is not {}.", so_path.display())
         }
     }
 }
@@ -402,9 +404,45 @@ fn compare_deployed(local: &[u8], onchain: &[u8]) -> Deployed {
     }
 }
 
-fn trim_trailing_zeros(bytes: &[u8]) -> &[u8] {
-    let end = bytes.iter().rposition(|b| *b != 0).map_or(0, |i| i + 1);
-    &bytes[..end]
+/// The program in a program account's data: the ELF file its headers describe,
+/// when only zeros follow, else the whole account. A program's own last bytes
+/// can be zero, so trailing zeros do not mark where it ends.
+fn deployed_program(account: &[u8]) -> &[u8] {
+    match elf_extent(account) {
+        Some(end) if account[end..].iter().all(|b| *b == 0) => &account[..end],
+        _ => account,
+    }
+}
+
+/// The length of the ELF64 little-endian file at the start of `bytes`: the
+/// furthest end of its header tables, sections and segments.
+fn elf_extent(bytes: &[u8]) -> Option<usize> {
+    let u16_at = |o: usize| Some(u16::from_le_bytes(bytes.get(o..o + 2)?.try_into().ok()?));
+    let u32_at = |o: usize| Some(u32::from_le_bytes(bytes.get(o..o + 4)?.try_into().ok()?));
+    let u64_at = |o: usize| Some(u64::from_le_bytes(bytes.get(o..o + 8)?.try_into().ok()?));
+    const SHT_NOBITS: u32 = 8;
+
+    if bytes.get(0..6)? != b"\x7fELF\x02\x01" {
+        return None;
+    }
+    let phoff = u64_at(0x20)?;
+    let shoff = u64_at(0x28)?;
+    let (phentsize, phnum) = (u64::from(u16_at(0x36)?), u64::from(u16_at(0x38)?));
+    let (shentsize, shnum) = (u64::from(u16_at(0x3a)?), u64::from(u16_at(0x3c)?));
+    let mut end = 0x40u64
+        .max(phoff.checked_add(phentsize * phnum)?)
+        .max(shoff.checked_add(shentsize * shnum)?);
+    for i in 0..shnum {
+        let header = usize::try_from(shoff + i * shentsize).ok()?;
+        if u32_at(header + 0x04)? != SHT_NOBITS {
+            end = end.max(u64_at(header + 0x18)?.checked_add(u64_at(header + 0x20)?)?);
+        }
+    }
+    for i in 0..phnum {
+        let header = usize::try_from(phoff + i * phentsize).ok()?;
+        end = end.max(u64_at(header + 0x08)?.checked_add(u64_at(header + 0x20)?)?);
+    }
+    usize::try_from(end).ok().filter(|end| *end <= bytes.len())
 }
 
 /// SIMD-0178, SIMD-0189 and SIMD-0377: enable deployment and execution of SBPFv3.
@@ -563,8 +601,36 @@ mod tests {
             compare_deployed(&local, &[1, 2, 0, 4, 0]),
             Deployed::Different
         );
-        assert_eq!(trim_trailing_zeros(&[1, 0, 2, 0, 0]), &[1, 0, 2]);
-        assert_eq!(trim_trailing_zeros(&[0, 0]), &[] as &[u8]);
+    }
+
+    /// An ELF64 header followed by a one-entry section header table, which
+    /// ends in zero bytes the way an SBF program's does.
+    fn elf_with_trailing_zeros() -> Vec<u8> {
+        let mut elf = vec![0u8; 0x80];
+        elf[..6].copy_from_slice(b"\x7fELF\x02\x01");
+        elf[0x28..0x30].copy_from_slice(&0x40u64.to_le_bytes());
+        elf[0x3a..0x3c].copy_from_slice(&0x40u16.to_le_bytes());
+        elf[0x3c..0x3e].copy_from_slice(&1u16.to_le_bytes());
+        elf[0x44..0x48].copy_from_slice(&1u32.to_le_bytes());
+        elf[0x58..0x60].copy_from_slice(&0x40u64.to_le_bytes());
+        elf[0x60..0x68].copy_from_slice(&0x20u64.to_le_bytes());
+        elf
+    }
+
+    #[test]
+    fn the_deployed_program_ends_where_its_elf_ends_not_at_its_last_nonzero_byte() {
+        let program = elf_with_trailing_zeros();
+        assert_eq!(elf_extent(&program), Some(program.len()));
+        let mut account = program.clone();
+        account.extend([0u8; 100]);
+        assert_eq!(deployed_program(&account), &program[..]);
+
+        let mut longer = program.clone();
+        longer[0x60..0x68].copy_from_slice(&0x60u64.to_le_bytes());
+        assert_eq!(elf_extent(&longer), None);
+        account.push(1);
+        assert_eq!(deployed_program(&account), &account[..]);
+        assert_eq!(deployed_program(&[0, 0, 1]), &[0, 0, 1]);
     }
 
     #[test]

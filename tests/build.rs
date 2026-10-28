@@ -603,7 +603,9 @@ fn verify_compares_the_deployed_program_with_the_artifact() {
 
     let mut changed = local.clone();
     changed[0x70] ^= 1;
-    std::fs::write(dir.join("onchain.so"), &changed).unwrap();
+    let mut padded = changed.clone();
+    padded.extend([0u8; 64]);
+    std::fs::write(dir.join("onchain.so"), &padded).unwrap();
     let out = run(&dir, &["verify", "--cluster", "devnet"]);
     assert!(!out.status.success());
     assert!(
@@ -614,6 +616,43 @@ fn verify_compares_the_deployed_program_with_the_artifact() {
         "{}",
         stderr(&out)
     );
+    // The on-chain figure is the deployed program's own, whatever the local file.
+    let text = stdout(&out);
+    assert!(
+        text.contains(&format!(
+            "on chain {}  {} bytes (the program account holds {};",
+            sha256_hex(&changed),
+            changed.len(),
+            padded.len()
+        )) && text.contains("built by pinoc with --features devnet, for cluster `devnet`"),
+        "{text}"
+    );
+}
+
+#[test]
+fn verify_refuses_an_artifact_built_for_another_cluster() {
+    let dir = cluster_project();
+    assert!(run(&dir, &["build", "--cluster", "mainnet"])
+        .status
+        .success());
+    dumping_solana(&dir);
+    let out = run(&dir, &["verify", "--cluster", "devnet"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("target/deploy/prog.so was built with no features (for cluster `mainnet`), which is not a build for cluster `devnet`")
+            && stderr(&out).contains("pinoc build --cluster devnet"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(!calls(&dir).iter().any(|c| c.contains("program dump")));
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 #[test]
